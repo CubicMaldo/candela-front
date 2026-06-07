@@ -26,7 +26,7 @@ class LokalApp extends StatelessWidget {
       title: 'Lokal',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      home: const _Root(),
+      home: const HomeShell(),
     );
   }
 }

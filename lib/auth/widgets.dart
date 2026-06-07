@@ -595,13 +595,9 @@ class ProgressTopBar extends StatelessWidget {
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
               widthFactor: step / total,
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(3),
-                  gradient: const LinearGradient(
-                    colors: [kRed, kGreen],
-                  ),
-                ),
+              child: const BrandStripes(
+                stripeWidth: 20,
+                borderRadius: BorderRadius.all(Radius.circular(3)),
               ),
             ),
           ),
@@ -609,4 +605,65 @@ class ProgressTopBar extends StatelessWidget {
       ],
     );
   }
+}
+
+// ─── Brand stripes ────────────────────────────────────────────────────────────
+// The design's signature fill: alternating diagonal red / green bands (a
+// barber-pole), used in place of a smooth red→green gradient.
+class BrandStripes extends StatelessWidget {
+  final double stripeWidth;
+  final BorderRadius? borderRadius;
+  final BoxShape shape;
+  final Widget? child;
+
+  const BrandStripes({
+    this.stripeWidth = 50,
+    this.borderRadius,
+    this.shape = BoxShape.rectangle,
+    this.child,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget painted = CustomPaint(
+      painter: _StripePainter(stripeWidth: stripeWidth),
+      child: child,
+    );
+    if (shape == BoxShape.circle) {
+      return ClipOval(child: painted);
+    }
+    if (borderRadius != null) {
+      return ClipRRect(borderRadius: borderRadius!, child: painted);
+    }
+    return painted;
+  }
+}
+
+class _StripePainter extends CustomPainter {
+  final double stripeWidth;
+  const _StripePainter({required this.stripeWidth});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    canvas.clipRect(Offset.zero & size);
+    // Base fill (red), then overlay diagonal green bands.
+    canvas.drawRect(Offset.zero & size, Paint()..color = kRed);
+    final green = Paint()..color = kGreen;
+    final band = stripeWidth * 2; // one red + one green per period
+    for (double x = -h; x < w + h; x += band) {
+      final path = Path()
+        ..moveTo(x, 0)
+        ..lineTo(x + stripeWidth, 0)
+        ..lineTo(x + stripeWidth - h, h)
+        ..lineTo(x - h, h)
+        ..close();
+      canvas.drawPath(path, green);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StripePainter old) => old.stripeWidth != stripeWidth;
 }

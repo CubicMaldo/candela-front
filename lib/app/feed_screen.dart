@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
-import '../auth/widgets.dart' show LokalLogo;
+import '../auth/widgets.dart' show LokalLogo, GamificationChip;
 import 'widgets.dart';
+import 'friends_screen.dart';
+import 'place_sheet.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -47,11 +49,21 @@ class _FeedScreenState extends State<FeedScreen> {
                   ),
                 ),
                 const Spacer(),
-                _IconChip(icon: Icons.search_rounded, onTap: () {}),
+                _IconChip(
+                  icon: Icons.group_outlined,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FriendsScreen()),
+                  ),
+                ),
                 const SizedBox(width: 10),
                 _IconChip(icon: Icons.notifications_none_rounded, onTap: () {}),
               ],
             ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: _DailySnapshot(),
           ),
           Expanded(
             child: RefreshIndicator(
@@ -110,6 +122,38 @@ class _IconChip extends StatelessWidget {
   }
 }
 
+// ─── Daily snapshot (points today + streak) ───────────────────────────────────
+class _DailySnapshot extends StatelessWidget {
+  const _DailySnapshot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const GamificationChip('+25 pts today'),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.fromLTRB(11, 7, 13, 7),
+          decoration: BoxDecoration(
+            color: kField,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.local_fire_department_rounded,
+                  size: 15, color: kRed),
+              const SizedBox(width: 6),
+              Text('12-day streak',
+                  style: jakartaSans(size: 12.5, weight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ─── Feed card ────────────────────────────────────────────────────────────────
 class _FeedCard extends StatelessWidget {
   final FeedEvent event;
@@ -118,16 +162,18 @@ class _FeedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (event.type) {
-      FeedType.checkin => _checkinCard(),
+      FeedType.checkin => _checkinCard(context),
       FeedType.challengeCompleted => _challengeCard(),
       FeedType.unknown => const SizedBox.shrink(),
     };
   }
 
-  Widget _checkinCard() {
+  Widget _checkinCard(BuildContext context) {
     final u = event.user;
+    final place = event.place;
     return AppCard(
       padding: EdgeInsets.zero,
+      onTap: place == null ? null : () => showPlaceSheet(context, place),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

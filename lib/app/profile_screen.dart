@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../auth/widgets.dart' show BrandStripes;
 import 'widgets.dart';
 import 'settings_screen.dart';
 
@@ -136,14 +137,8 @@ class _PointsBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [kRed, kGreen],
-        ),
         boxShadow: [
           BoxShadow(
             color: kRed.withValues(alpha: 0.25),
@@ -153,33 +148,41 @@ class _PointsBanner extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: BrandStripes(
+        stripeWidth: 50,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          child: Row(
             children: [
-              Text('Total points',
-                  style: jakartaSans(
-                      size: 13,
-                      weight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.85))),
-              const SizedBox(height: 4),
-              Text('$points',
-                  style: jakartaSans(
-                      size: 34, weight: FontWeight.w800, color: Colors.white)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Total points',
+                      style: jakartaSans(
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.85))),
+                  const SizedBox(height: 4),
+                  Text('$points',
+                      style: jakartaSans(
+                          size: 34, weight: FontWeight.w800, color: Colors.white)),
+                ],
+              ),
+              const Spacer(),
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.25),
+                ),
+                child: const Icon(Icons.workspace_premium_rounded,
+                    color: Colors.white, size: 28),
+              ),
             ],
           ),
-          const Spacer(),
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.2),
-            ),
-            child: const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 28),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'feed_screen.dart';
+import 'map_screen.dart';
 import 'rankings_screen.dart';
-import 'friends_screen.dart';
 import 'profile_screen.dart';
 import 'checkin_screen.dart';
 
@@ -16,14 +16,46 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  final _controller = PageController();
   int _index = 0;
 
   final _screens = const [
     FeedScreen(),
+    MapScreen(),
     RankingsScreen(),
-    FriendsScreen(),
     MyProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onPageScroll);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onPageScroll);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // Highlight the bottom-bar item as soon as the swipe crosses the halfway
+  // point, so the indicator tracks the gesture instead of snapping at the end.
+  void _onPageScroll() {
+    final page = _controller.page;
+    if (page == null) return;
+    final rounded = page.round();
+    if (rounded != _index) setState(() => _index = rounded);
+  }
+
+  void _goToTab(int i) {
+    if (i == _index) return;
+    _controller.animateToPage(
+      i,
+      duration: const Duration(milliseconds: 340),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   void _openCheckIn() {
     Navigator.push(
@@ -36,14 +68,43 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-      body: IndexedStack(index: _index, children: _screens),
+      body: PageView(
+        controller: _controller,
+        // Page snapping + iOS-style overscroll bounce for a premium feel.
+        physics: const BouncingScrollPhysics(),
+        children: [
+          for (final screen in _screens) _KeepAlivePage(child: screen),
+        ],
+      ),
       floatingActionButton: _CheckInFab(onTap: _openCheckIn),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: _BottomBar(
         index: _index,
-        onChanged: (i) => setState(() => _index = i),
+        onChanged: _goToTab,
       ),
     );
+  }
+}
+
+// Keeps each tab's state alive while swiping between pages (so feeds, scroll
+// offsets and fetched data survive when a page scrolls out of the viewport).
+class _KeepAlivePage extends StatefulWidget {
+  final Widget child;
+  const _KeepAlivePage({required this.child});
+
+  @override
+  State<_KeepAlivePage> createState() => _KeepAlivePageState();
+}
+
+class _KeepAlivePageState extends State<_KeepAlivePage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }
 
@@ -61,15 +122,11 @@ class _CheckInFab extends StatelessWidget {
         height: 62,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [kRed, kGreen],
-          ),
+          color: kRed,
           boxShadow: [
             BoxShadow(
               color: kRed.withValues(alpha: 0.40),
-              blurRadius: 20,
+              blurRadius: 10,
               offset: const Offset(0, 8),
               spreadRadius: -4,
             ),
@@ -101,9 +158,9 @@ class _BottomBar extends StatelessWidget {
           child: Row(
             children: [
               _Item(icon: Icons.dynamic_feed_rounded, label: 'Feed', i: 0, index: index, onChanged: onChanged),
-              _Item(icon: Icons.leaderboard_rounded, label: 'Ranks', i: 1, index: index, onChanged: onChanged),
+              _Item(icon: Icons.map_rounded, label: 'Map', i: 1, index: index, onChanged: onChanged),
               const Spacer(flex: 1), // space for the FAB
-              _Item(icon: Icons.group_rounded, label: 'Friends', i: 2, index: index, onChanged: onChanged),
+              _Item(icon: Icons.leaderboard_rounded, label: 'Ranks', i: 2, index: index, onChanged: onChanged),
               _Item(icon: Icons.person_rounded, label: 'Profile', i: 3, index: index, onChanged: onChanged),
             ],
           ),
