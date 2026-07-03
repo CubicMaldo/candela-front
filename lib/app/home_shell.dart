@@ -1,13 +1,17 @@
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme.dart';
-import 'feed_screen.dart';
-import 'map_screen.dart';
-import 'rankings_screen.dart';
-import 'profile_screen.dart';
 import 'checkin_screen.dart';
+import 'map_screen.dart';
+import 'feed_screen.dart';
+import 'plans_screen.dart';
+import 'profile_screen.dart';
+import 'widgets.dart' show SlideRightRoute;
 
-/// Root of the authenticated app: a five-slot bottom bar with a raised central
-/// check-in action, matching the Lokal design language.
+/// Root of the authenticated app — a 4-tab bottom bar (Map, Feed, Plans,
+/// Profile) plus a floating check-in button that stays visible above the bar
+/// on every tab.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -16,198 +20,206 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  final _controller = PageController();
   int _index = 0;
 
-  final _screens = const [
-    FeedScreen(),
+  static const _tabs = [
     MapScreen(),
-    RankingsScreen(),
+    FeedScreen(),
+    PlansScreen(),
     MyProfileScreen(),
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    _controller.addListener(_onPageScroll);
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_onPageScroll);
-    _controller.dispose();
-    super.dispose();
-  }
-
-  // Highlight the bottom-bar item as soon as the swipe crosses the halfway
-  // point, so the indicator tracks the gesture instead of snapping at the end.
-  void _onPageScroll() {
-    final page = _controller.page;
-    if (page == null) return;
-    final rounded = page.round();
-    if (rounded != _index) setState(() => _index = rounded);
-  }
-
-  void _goToTab(int i) {
-    if (i == _index) return;
-    _controller.animateToPage(
-      i,
-      duration: const Duration(milliseconds: 340),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
   void _openCheckIn() {
+    HapticFeedback.lightImpact();
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const CheckInScreen()),
+      SlideRightRoute(builder: (_) => const CheckInScreen()),
     );
+  }
+
+  void _onTab(int i) {
+    if (i == _index) return;
+    HapticFeedback.selectionClick();
+    setState(() => _index = i);
   }
 
   @override
   Widget build(BuildContext context) {
+    // extendBody lets the active tab scroll *behind* the frosted nav bar — the
+    // iOS hallmark of depth and translucency.
     return Scaffold(
-      backgroundColor: kBg,
-      body: PageView(
-        controller: _controller,
-        // Page snapping + iOS-style overscroll bounce for a premium feel.
-        physics: const BouncingScrollPhysics(),
-        children: [
-          for (final screen in _screens) _KeepAlivePage(child: screen),
-        ],
+      extendBody: true,
+      // A cross-fade is layered over the IndexedStack (which keeps each tab's
+      // state and avoids re-fetching on every switch).
+      body: TweenAnimationBuilder<double>(
+        key: ValueKey(_index),
+        tween: Tween(begin: 0.65, end: 1),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        builder: (context, opacity, child) =>
+            Opacity(opacity: opacity, child: child),
+        child: IndexedStack(index: _index, children: _tabs),
       ),
+      // The FAB lives in the Scaffold slot so it paints *above* the frosted bar
+      // (in the body Stack it was hidden behind it). centerDocked raises it onto
+      // the bar's top edge.
       floatingActionButton: _CheckInFab(onTap: _openCheckIn),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: _BottomBar(
-        index: _index,
-        onChanged: _goToTab,
-      ),
+      bottomNavigationBar: _NavBar(index: _index, onChanged: _onTab),
     );
   }
 }
 
-// Keeps each tab's state alive while swiping between pages (so feeds, scroll
-// offsets and fetched data survive when a page scrolls out of the viewport).
-class _KeepAlivePage extends StatefulWidget {
-  final Widget child;
-  const _KeepAlivePage({required this.child});
-
-  @override
-  State<_KeepAlivePage> createState() => _KeepAlivePageState();
-}
-
-class _KeepAlivePageState extends State<_KeepAlivePage>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    return widget.child;
-  }
-}
-
-// ─── Raised central check-in button ───────────────────────────────────────────
-class _CheckInFab extends StatelessWidget {
+// ─── Floating check-in button ────────────────────────────────────────────────
+class _CheckInFab extends StatefulWidget {
   final VoidCallback onTap;
   const _CheckInFab({required this.onTap});
 
   @override
+  State<_CheckInFab> createState() => _CheckInFabState();
+}
+
+class _CheckInFabState extends State<_CheckInFab> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 62,
-        height: 62,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: kRed,
-          boxShadow: [
-            BoxShadow(
-              color: kRed.withValues(alpha: 0.40),
-              blurRadius: 10,
-              offset: const Offset(0, 8),
-              spreadRadius: -4,
-            ),
-          ],
-        ),
-        child: const Icon(Icons.add_a_photo_rounded, color: Colors.white, size: 26),
-      ),
-    );
-  }
-}
-
-// ─── Bottom navigation bar ────────────────────────────────────────────────────
-class _BottomBar extends StatelessWidget {
-  final int index;
-  final ValueChanged<int> onChanged;
-  const _BottomBar({required this.index, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: kBg,
-        border: Border(top: BorderSide(color: kBorder, width: 1)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 62,
-          child: Row(
-            children: [
-              _Item(icon: Icons.dynamic_feed_rounded, label: 'Feed', i: 0, index: index, onChanged: onChanged),
-              _Item(icon: Icons.map_rounded, label: 'Map', i: 1, index: index, onChanged: onChanged),
-              const Spacer(flex: 1), // space for the FAB
-              _Item(icon: Icons.leaderboard_rounded, label: 'Ranks', i: 2, index: index, onChanged: onChanged),
-              _Item(icon: Icons.person_rounded, label: 'Profile', i: 3, index: index, onChanged: onChanged),
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.9 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: candelaAmber,
+            boxShadow: [
+              BoxShadow(
+                color: candelaAmber.withValues(alpha: 0.35),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
             ],
           ),
+          child: const Center(child: _FlameIcon(size: 28)),
         ),
       ),
     );
   }
 }
 
-class _Item extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final int i;
-  final int index;
-  final ValueChanged<int> onChanged;
-
-  const _Item({
-    required this.icon,
-    required this.label,
-    required this.i,
-    required this.index,
-    required this.onChanged,
-  });
+/// Candela's check-in icon — a stylised flame, drawn as a vector path so it
+/// renders crisply at any size without bundling an SVG asset.
+class _FlameIcon extends StatelessWidget {
+  final double size;
+  const _FlameIcon({this.size = 24});
 
   @override
   Widget build(BuildContext context) {
-    final on = i == index;
-    final color = on ? kRed : kMuted;
-    return Expanded(
-      flex: 2,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => onChanged(i),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 24, color: color),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: jakartaSans(
-                size: 11,
-                weight: on ? FontWeight.w700 : FontWeight.w600,
-                color: color,
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(painter: _FlamePainter()),
+    );
+  }
+}
+
+class _FlamePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final path = Path()
+      ..moveTo(w * 0.50, h * 0.02)
+      ..cubicTo(w * 0.30, h * 0.32, w * 0.18, h * 0.46, w * 0.18, h * 0.66)
+      ..cubicTo(w * 0.18, h * 0.90, w * 0.34, h * 1.02, w * 0.50, h * 1.02)
+      ..cubicTo(w * 0.66, h * 1.02, w * 0.82, h * 0.90, w * 0.82, h * 0.66)
+      ..cubicTo(w * 0.82, h * 0.54, w * 0.76, h * 0.45, w * 0.68, h * 0.40)
+      ..cubicTo(w * 0.70, h * 0.54, w * 0.62, h * 0.62, w * 0.54, h * 0.62)
+      ..cubicTo(w * 0.46, h * 0.62, w * 0.40, h * 0.55, w * 0.42, h * 0.44)
+      ..cubicTo(w * 0.44, h * 0.32, w * 0.50, h * 0.20, w * 0.50, h * 0.02)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FlamePainter oldDelegate) => false;
+}
+
+// ─── Bottom navigation bar ───────────────────────────────────────────────────
+class _NavBar extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onChanged;
+  const _NavBar({required this.index, required this.onChanged});
+
+  static const _outlined = [
+    Icons.map_outlined,
+    Icons.image_outlined,
+    Icons.calendar_today_outlined,
+    Icons.person_outline_rounded,
+  ];
+
+  static const _filled = [
+    Icons.map_rounded,
+    Icons.image_rounded,
+    Icons.calendar_today_rounded,
+    Icons.person_rounded,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final background = isDark ? candelaNight : Colors.white;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          decoration: BoxDecoration(
+            // Translucent so the content shows faintly through the frost.
+            color: background.withValues(alpha: 0.82),
+            border: Border(
+              top: BorderSide(
+                color: borderInactive.withValues(alpha: 0.4),
+                width: 0.5,
               ),
             ),
-          ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 60,
+              child: Row(
+                children: List.generate(_outlined.length, (i) {
+                  final active = i == index;
+                  return Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onChanged(i),
+                      child: Center(
+                        child: Icon(
+                          active ? _filled[i] : _outlined[i],
+                          size: 26,
+                          // Higher-contrast inactive tone than borderInactive.
+                          color: active ? candelaAmber : textSecondary,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
         ),
       ),
     );

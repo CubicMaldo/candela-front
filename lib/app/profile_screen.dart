@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
-import '../auth/widgets.dart' show BrandStripes;
 import 'widgets.dart';
 import 'settings_screen.dart';
+import 'friends_screen.dart';
+import 'history_screen.dart';
 
+part 'profile_widgets.dart';
+
+/// Own profile — privacy-first by design. Points are collapsed and rankings
+/// are opt-in; the weekly streak is the one number we celebrate by default.
 class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
 
@@ -14,8 +19,9 @@ class MyProfileScreen extends StatefulWidget {
 }
 
 class _MyProfileScreenState extends State<MyProfileScreen> {
-  late Future<MyProfile> _profile;
-  late Future<List<CheckIn>> _checkIns;
+  late Future<User> _profile;
+  late Future<List<CheckInEvent>> _recent;
+  bool _pointsExpanded = false;
 
   @override
   void initState() {
@@ -24,8 +30,13 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
   }
 
   void _load() {
-    _profile = ApiService.me();
-    _checkIns = ApiService.myCheckIns();
+    _profile = ApiService.getMyProfile();
+    // No dedicated "my check-ins" endpoint — derive recent visits from the
+    // city feed, filtered to the current user once the profile resolves.
+    _recent = _profile.then((p) async {
+      final events = await ApiService.getFeed(limit: 40);
+      return events.where((e) => e.user.userId == p.userId).take(5).toList();
+    });
   }
 
   Future<void> _refresh() async {
@@ -33,237 +44,126 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
     await _profile;
   }
 
+  Future<void> _openSettings(User profile) async {
+    await Navigator.push(
+      context,
+      SlideRightRoute(builder: (_) => SettingsScreen(profile: profile)),
+    );
+    if (mounted) setState(_load);
+  }
+
+  Future<void> _optIntoRankings() async {
+    try {
+      await ApiService.updateRankingOptIn(true);
+      if (mounted) setState(_load);
+    } catch (_) {
+      if (mounted) showToast(context, 'No se pudo activar los rankings.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     return SafeArea(
       bottom: false,
       child: RefreshIndicator(
-        color: kRed,
+        color: candelaAmber,
         onRefresh: _refresh,
-        child: AsyncView<MyProfile>(
+        child: AsyncView<User>(
           future: _profile,
-          errorTitle: 'Could not load profile',
+          errorTitle: 'No se pudo cargar tu perfil',
+          loading: const _ProfileSkeleton(),
           builder: (p) => ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+            padding: const EdgeInsets.fromLTRB(
+              spacingScreen,
+              8,
+              spacingScreen,
+              kBottomGap,
+            ),
             children: [
+              ScreenHeader(
+                title: 'Perfil',
+                padded: false,
+                trailing: _IconButton(
+                  icon: Icons.settings_outlined,
+                  onTap: () => _openSettings(p),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Column(
+                  children: [
+                    _AvatarCircle(username: p.username, size: 96),
+                    const SizedBox(height: 14),
+                    Text('@${p.username}', style: textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    _BadgePill(p.badgeLevel),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
               Row(
                 children: [
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () async {
-                      await Navigator.push(
+                  Expanded(
+                    child: _StatItem(value: p.checkInCount, label: 'Check-ins'),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => SettingsScreen(profile: p),
-                        ),
-                      );
-                      if (mounted) setState(_load);
-                    },
-                    child: Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                          color: kField, borderRadius: BorderRadius.circular(12)),
-                      child: const Icon(Icons.settings_outlined, size: 21, color: kText),
+                        SlideRightRoute(builder: (_) => const FriendsScreen()),
+                      ),
+                      child: _StatItem(value: p.friendsCount, label: 'Amigos'),
+                    ),
+                  ),
+                  Expanded(
+                    child: _StatItem(
+                      value: p.completedPlansCount,
+                      label: 'Planes concretados',
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Center(
-                child: Column(
-                  children: [
-                    UserAvatar(username: p.username, size: 96, imageUrl: p.avatarUrl),
-                    const SizedBox(height: 14),
-                    Text('@${p.username}',
-                        style: jakartaSans(
-                            size: 24, weight: FontWeight.w800, letterSpacing: -0.03 * 24)),
-                    const SizedBox(height: 8),
-                    BadgeChip(p.badge),
-                  ],
-                ),
+              const SizedBox(height: spacingCardGap),
+              _StreakCard(
+                weeks: p.streakWeeksCurrent,
+                weekCheckins: p.streakWeekCheckins,
               ),
-              const SizedBox(height: 22),
-              _PointsBanner(points: p.pointsTotal, badge: p.badge),
-              const SizedBox(height: 14),
+              const SizedBox(height: spacingCardGap),
+              _PointsSection(
+                expanded: _pointsExpanded,
+                pointsTotal: p.pointsTotal,
+                pointsSeason: p.pointsSeason,
+                onToggle: () =>
+                    setState(() => _pointsExpanded = !_pointsExpanded),
+              ),
+              const SizedBox(height: spacingCardGap),
+              _RankingsSection(
+                optedIn: p.rankingOptIn,
+                onOptIn: _optIntoRankings,
+              ),
+              const SizedBox(height: 24),
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(child: _StatTile(value: p.checkInCount, label: 'Check-ins', icon: Icons.place_rounded)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _StatTile(value: p.friendsCount, label: 'Friends', icon: Icons.group_rounded)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _StatTile(value: p.completedChallengesCount, label: 'Challenges', icon: Icons.emoji_events_rounded)),
+                  Text('Check-ins recientes', style: textTheme.titleSmall),
+                  TextButton(
+                    style: TextButton.styleFrom(foregroundColor: candelaAmber),
+                    onPressed: () => Navigator.push(
+                      context,
+                      SlideRightRoute(
+                        builder: (_) => CheckInHistoryScreen(profile: p),
+                      ),
+                    ),
+                    child: const Text('Ver historial'),
+                  ),
                 ],
               ),
-              const SizedBox(height: 26),
-              Text('Recent check-ins',
-                  style: jakartaSans(size: 18, weight: FontWeight.w800, letterSpacing: -0.02 * 18)),
-              const SizedBox(height: 12),
-              AsyncView<List<CheckIn>>(
-                future: _checkIns,
-                errorTitle: 'Could not load history',
-                builder: (checkIns) {
-                  if (checkIns.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.photo_camera_outlined,
-                      title: 'No check-ins yet',
-                      message: 'Tap the camera button to make your first one.',
-                    );
-                  }
-                  return Column(
-                    children: checkIns
-                        .map((c) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: _CheckInRow(c),
-                            ))
-                        .toList(),
-                  );
-                },
-              ),
+              const SizedBox(height: 8),
+              _RecentCheckIns(future: _recent),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─── Points banner ────────────────────────────────────────────────────────────
-class _PointsBanner extends StatelessWidget {
-  final int points;
-  final BadgeLevel badge;
-  const _PointsBanner({required this.points, required this.badge});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: kRed.withValues(alpha: 0.25),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-            spreadRadius: -8,
-          ),
-        ],
-      ),
-      child: BrandStripes(
-        stripeWidth: 50,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          child: Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Total points',
-                      style: jakartaSans(
-                          size: 13,
-                          weight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.85))),
-                  const SizedBox(height: 4),
-                  Text('$points',
-                      style: jakartaSans(
-                          size: 34, weight: FontWeight.w800, color: Colors.white)),
-                ],
-              ),
-              const Spacer(),
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.25),
-                ),
-                child: const Icon(Icons.workspace_premium_rounded,
-                    color: Colors.white, size: 28),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Stat tile ────────────────────────────────────────────────────────────────
-class _StatTile extends StatelessWidget {
-  final int value;
-  final String label;
-  final IconData icon;
-  const _StatTile({required this.value, required this.label, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(
-        color: kField,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, size: 20, color: kMuted),
-          const SizedBox(height: 8),
-          Text('$value',
-              style: jakartaSans(size: 20, weight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: jakartaSans(size: 11.5, weight: FontWeight.w600, color: kMuted)),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Check-in history row ─────────────────────────────────────────────────────
-class _CheckInRow extends StatelessWidget {
-  final CheckIn checkIn;
-  const _CheckInRow(this.checkIn);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: kBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kBorder, width: 1),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: kField,
-              borderRadius: BorderRadius.circular(12),
-              image: checkIn.photoUrl != null
-                  ? DecorationImage(
-                      image: NetworkImage(checkIn.photoUrl!), fit: BoxFit.cover)
-                  : null,
-            ),
-            child: checkIn.photoUrl != null
-                ? null
-                : Icon(Icons.place_rounded, size: 22, color: kMuted),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(checkIn.placeName,
-                    style: jakartaSans(size: 14.5, weight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(timeAgo(checkIn.createdAt),
-                    style: jakartaSans(size: 12.5, weight: FontWeight.w500, color: kMuted)),
-              ],
-            ),
-          ),
-          PointsPill(checkIn.pointsAwarded, large: true),
-        ],
       ),
     );
   }

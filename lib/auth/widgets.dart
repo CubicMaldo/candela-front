@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 // Squircle split diagonally red (top-left) / green (bottom-right) with a white
 // locator dot at the centre — matches the design's brand mark exactly.
-class LokalLogo extends StatelessWidget {
+class CandelaLogo extends StatelessWidget {
   final double size;
-  const LokalLogo({this.size = 40, super.key});
+  const CandelaLogo({this.size = 40, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +20,7 @@ class LokalLogo extends StatelessWidget {
           begin: Alignment(-1, -1),
           end: Alignment(1, 1),
           stops: [0.0, 0.495, 0.505, 1.0],
-          colors: [kRed, kRed, kGreen, kGreen],
+          colors: [candelaAmber, candelaAmber, kGreen, kGreen],
         ),
         boxShadow: [
           BoxShadow(
@@ -63,7 +64,7 @@ class Wordmark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'Lokal',
+      'Candela',
       style: jakartaSans(
         size: size,
         weight: FontWeight.w800,
@@ -97,7 +98,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
-    final bg = widget.color ?? kRed;
+    final bg = widget.color ?? candelaAmber;
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) {
@@ -251,9 +252,9 @@ class _GooglePainter extends CustomPainter {
 
     // Approximate four-colour Google ring
     arc(const Color(0xFF4285F4), -1.65, 1.72); // blue  (right + top)
-    arc(const Color(0xFF34A853),  0.07, 1.57); // green (bottom-right)
-    arc(const Color(0xFFFBBC05),  1.64, 0.78); // yellow
-    arc(const Color(0xFFEA4335),  2.42, 1.05); // red   (left)
+    arc(const Color(0xFF34A853), 0.07, 1.57); // green (bottom-right)
+    arc(const Color(0xFFFBBC05), 1.64, 0.78); // yellow
+    arc(const Color(0xFFEA4335), 2.42, 1.05); // red   (left)
 
     // White gap for the horizontal bar (right side)
     canvas.drawRect(
@@ -268,7 +269,7 @@ class _GooglePainter extends CustomPainter {
 }
 
 // ─── Field ────────────────────────────────────────────────────────────────────
-class LokalField extends StatefulWidget {
+class CandelaField extends StatefulWidget {
   final String? label;
   final String placeholder;
   final TextEditingController controller;
@@ -279,7 +280,7 @@ class LokalField extends StatefulWidget {
   final bool readOnly;
   final VoidCallback? onTap;
 
-  const LokalField({
+  const CandelaField({
     this.label,
     required this.placeholder,
     required this.controller,
@@ -293,10 +294,10 @@ class LokalField extends StatefulWidget {
   });
 
   @override
-  State<LokalField> createState() => _LokalFieldState();
+  State<CandelaField> createState() => _CandelaFieldState();
 }
 
-class _LokalFieldState extends State<LokalField> {
+class _CandelaFieldState extends State<CandelaField> {
   bool _focused = false;
 
   @override
@@ -339,17 +340,11 @@ class _LokalFieldState extends State<LokalField> {
             color: kField,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: _focused ? kRed : Colors.transparent,
+              color: _focused ? candelaAmber : Colors.transparent,
               width: 1.5,
             ),
             boxShadow: _focused
-                ? [
-                    BoxShadow(
-                      color: kSoftRed,
-                      blurRadius: 0,
-                      spreadRadius: 4,
-                    ),
-                  ]
+                ? [BoxShadow(color: kSoftRed, blurRadius: 0, spreadRadius: 4)]
                 : null,
           ),
           child: Row(
@@ -462,11 +457,14 @@ class GamificationChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = red ? kRed : kGreen;
+    final color = red ? candelaAmber : kGreen;
     final bg = red ? kSoftRed : kSoftGreen;
     return Container(
       padding: const EdgeInsets.fromLTRB(11, 7, 13, 7),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -497,7 +495,9 @@ class _SparkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..style = PaintingStyle.fill;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
     final w = size.width;
     final h = size.height;
     // 8-pointed star: M12 2 l2.2 6.4 L21 11 l-6.8 2.6 L12 20 l-2.2-6.4 L3 11 l6.8-2.6z
@@ -581,7 +581,11 @@ class ProgressTopBar extends StatelessWidget {
               color: kField,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.chevron_left_rounded, size: 26, color: kText),
+            child: const Icon(
+              Icons.chevron_left_rounded,
+              size: 26,
+              color: kText,
+            ),
           ),
         ),
         const SizedBox(width: 14),
@@ -650,7 +654,7 @@ class _StripePainter extends CustomPainter {
     final h = size.height;
     canvas.clipRect(Offset.zero & size);
     // Base fill (red), then overlay diagonal green bands.
-    canvas.drawRect(Offset.zero & size, Paint()..color = kRed);
+    canvas.drawRect(Offset.zero & size, Paint()..color = candelaAmber);
     final green = Paint()..color = kGreen;
     final band = stripeWidth * 2; // one red + one green per period
     for (double x = -h; x < w + h; x += band) {
@@ -666,4 +670,246 @@ class _StripePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_StripePainter old) => old.stripeWidth != stripeWidth;
+}
+
+// ─── Candela auth screen primitives ──────────────────────────────────────────
+// Shared building blocks for the dark, minimal Candela auth flow
+// (welcome / login / email / join screens).
+
+const _softError = Color(0xFFE2726A);
+
+TextStyle _candelaText({
+  double size = 15,
+  FontWeight weight = FontWeight.w500,
+  Color color = textDarkPrimary,
+}) => GoogleFonts.plusJakartaSans(
+  fontSize: size,
+  fontWeight: weight,
+  color: color,
+);
+
+class CandelaBackButton extends StatelessWidget {
+  const CandelaBackButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.maybePop(context),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: surfaceDark,
+          borderRadius: BorderRadius.circular(radiusMedium),
+        ),
+        child: const Icon(
+          Icons.chevron_left_rounded,
+          size: 26,
+          color: textDarkPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+/// Pill-shaped CTA used throughout the dark auth flow. `primary` renders an
+/// amber-filled button; otherwise a transparent button with an amber border.
+class CandelaButton extends StatelessWidget {
+  final String label;
+  final VoidCallback? onTap;
+  final bool primary;
+  final bool loading;
+
+  const CandelaButton({
+    required this.label,
+    this.onTap,
+    this.primary = true,
+    this.loading = false,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = _candelaText(
+      size: 15,
+      weight: FontWeight.w600,
+      color: primary ? Colors.white : candelaAmber,
+    );
+    final spinner = SizedBox(
+      width: 22,
+      height: 22,
+      child: CircularProgressIndicator(
+        strokeWidth: 2.5,
+        color: primary ? Colors.white : candelaAmber,
+      ),
+    );
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: primary
+          ? ElevatedButton(
+              onPressed: (loading || onTap == null) ? null : onTap,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: candelaAmber,
+                disabledBackgroundColor: candelaAmber.withValues(alpha: 0.45),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusPill),
+                ),
+              ),
+              child: loading ? spinner : Text(label, style: textStyle),
+            )
+          : OutlinedButton(
+              onPressed: (loading || onTap == null) ? null : onTap,
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: candelaAmber, width: 1.5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusPill),
+                ),
+              ),
+              child: loading ? spinner : Text(label, style: textStyle),
+            ),
+    );
+  }
+}
+
+/// Text field for the dark auth screens: subtle inactive border, amber on
+/// focus, 8px radius — matches the Candela design tokens (radiusMedium).
+class CandelaTextField extends StatefulWidget {
+  final String label;
+  final String? hint;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final bool obscureText;
+  final TextInputType keyboardType;
+  final Widget? suffixIcon;
+  final bool readOnly;
+  final VoidCallback? onTap;
+
+  const CandelaTextField({
+    required this.label,
+    this.hint,
+    required this.controller,
+    this.focusNode,
+    this.obscureText = false,
+    this.keyboardType = TextInputType.text,
+    this.suffixIcon,
+    this.readOnly = false,
+    this.onTap,
+    super.key,
+  });
+
+  @override
+  State<CandelaTextField> createState() => _CandelaTextFieldState();
+}
+
+class _CandelaTextFieldState extends State<CandelaTextField> {
+  late final FocusNode _focusNode = widget.focusNode ?? FocusNode();
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocus);
+  }
+
+  void _onFocus() {
+    if (mounted) setState(() => _focused = _focusNode.hasFocus);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocus);
+    if (widget.focusNode == null) _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.label,
+          style: _candelaText(
+            size: 13,
+            weight: FontWeight.w600,
+            color: textDarkSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            color: _focused
+                ? candelaAmber.withValues(alpha: 0.08)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(radiusMedium),
+            border: Border.all(
+              color: _focused ? candelaAmber : borderInactive,
+              width: 1.5,
+            ),
+          ),
+          child: TextField(
+            controller: widget.controller,
+            focusNode: _focusNode,
+            obscureText: widget.obscureText,
+            keyboardType: widget.keyboardType,
+            readOnly: widget.readOnly,
+            onTap: widget.onTap,
+            style: _candelaText(size: 16, weight: FontWeight.w600),
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              hintStyle: _candelaText(
+                size: 16,
+                weight: FontWeight.w500,
+                color: textDarkSecondary,
+              ),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              suffixIcon: widget.suffixIcon,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Soft, non-harsh error banner for the auth screens — muted red on a
+/// translucent fill, never the alarming saturated red of system errors.
+class CandelaErrorBanner extends StatelessWidget {
+  final String message;
+  const CandelaErrorBanner(this.message, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: _softError.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(radiusMedium),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded, color: _softError, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: _candelaText(
+                size: 13.5,
+                weight: FontWeight.w600,
+                color: _softError,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

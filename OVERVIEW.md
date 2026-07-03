@@ -1,4 +1,4 @@
-# Nomad API — Project Overview
+# Candela API — Project Overview
 
 ## What it is
 

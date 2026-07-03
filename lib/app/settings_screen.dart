@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
-import '../services/auth_service.dart';
+import '../services/auth_service.dart' show ApiException, TokenStorage;
 import '../auth/welcome_screen.dart';
+import '../main.dart' show themeModeNotifier;
 import 'widgets.dart';
 
 class SettingsScreen extends StatefulWidget {
-  final MyProfile profile;
+  final User profile;
   const SettingsScreen({required this.profile, super.key});
 
   @override
@@ -16,37 +17,87 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   late PrivacyMode _privacy;
-  bool _saving = false;
+  late bool _rankingOptIn;
+  bool _busy = false;
+
+  static const _privacyLabels = {
+    PrivacyMode.public: 'Público',
+    PrivacyMode.friends: 'Solo amigos',
+    PrivacyMode.private: 'Privado',
+  };
+
+  static const _themeLabels = {
+    ThemeMode.system: 'Sistema',
+    ThemeMode.light: 'Claro',
+    ThemeMode.dark: 'Oscuro',
+  };
 
   @override
   void initState() {
     super.initState();
-    _privacy = widget.profile.privacy;
+    _privacy = widget.profile.privacyMode;
+    _rankingOptIn = widget.profile.rankingOptIn;
   }
 
   Future<void> _setPrivacy(PrivacyMode mode) async {
-    // Guard: protected accounts cannot go PUBLIC (FRONTEND_GUIDE §5).
-    if (mode == PrivacyMode.public && widget.profile.isProtected) {
-      showToast(context, 'Protected accounts cannot be public.');
-      return;
-    }
+    if (mode == _privacy || _busy) return;
     final previous = _privacy;
     setState(() {
       _privacy = mode;
-      _saving = true;
+      _busy = true;
     });
     try {
       await ApiService.updatePrivacy(mode);
-      if (mounted) showToast(context, 'Privacy updated to ${mode.label}');
+      if (mounted) {
+        showToast(context, 'Privacidad actualizada a ${_privacyLabels[mode]}');
+      }
     } on ApiException catch (e) {
       setState(() => _privacy = previous);
       if (mounted) showToast(context, e.message);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _logout() async {
+  Future<void> _setRankingOptIn(bool value) async {
+    if (_busy) return;
+    final previous = _rankingOptIn;
+    setState(() {
+      _rankingOptIn = value;
+      _busy = true;
+    });
+    try {
+      final result = await ApiService.updateRankingOptIn(value);
+      if (mounted) setState(() => _rankingOptIn = result);
+    } on ApiException catch (e) {
+      setState(() => _rankingOptIn = previous);
+      if (mounted) showToast(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _setThemeMode(ThemeMode mode) => themeModeNotifier.value = mode;
+
+  Future<void> _confirmLogout() async {
+    final confirmed = await showAdaptiveDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog.adaptive(
+        title: const Text('Cerrar sesión'),
+        content: const Text('¿Quieres cerrar tu sesión en este dispositivo?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cerrar sesión'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     await TokenStorage.clear();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
@@ -55,93 +106,106 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _confirmDeleteAccount() async {
+    final confirmed = await showAdaptiveDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog.adaptive(
+        title: const Text('Eliminar cuenta'),
+        content: const Text(
+          'Esta acción es permanente. Se eliminarán tu perfil, tus check-ins y tu historial. ¿Quieres continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: candelaDanger),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ApiService.deleteAccount();
+      await TokenStorage.clear();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        (_) => false,
+      );
+    } on ApiException catch (e) {
+      if (mounted) showToast(context, e.message);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: kBg,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
+          padding: const EdgeInsets.fromLTRB(
+            spacingScreen,
+            8,
+            spacingScreen,
+            30,
+          ),
           children: [
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.maybePop(context),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                        color: kField, borderRadius: BorderRadius.circular(12)),
-                    child: const Icon(Icons.chevron_left_rounded, size: 26, color: kText),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Text('Settings',
-                    style: jakartaSans(
-                        size: 24, weight: FontWeight.w800, letterSpacing: -0.03 * 24)),
-              ],
-            ),
-            const SizedBox(height: 24),
+            const ScreenHeader(title: 'Ajustes', showBack: true, padded: false),
+            const SizedBox(height: 20),
 
-            // ── Account summary ──────────────────────────────────────────────
-            AppCard(
-              child: Row(
-                children: [
-                  UserAvatar(username: widget.profile.username, size: 50),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('@${widget.profile.username}',
-                            style: jakartaSans(size: 16, weight: FontWeight.w700)),
-                        const SizedBox(height: 2),
-                        Text(widget.profile.email ?? 'No email on file',
-                            style: jakartaSans(
-                                size: 13, weight: FontWeight.w500, color: kMuted)),
-                      ],
-                    ),
-                  ),
-                  if (widget.profile.isProtected)
-                    Icon(Icons.shield_rounded, color: kGreen, size: 22),
-                ],
-              ),
-            ),
-            const SizedBox(height: 26),
-
-            Text('Privacy',
-                style: jakartaSans(size: 14, weight: FontWeight.w700, color: kMuted)),
-            const SizedBox(height: 4),
-            Text('Control who can see your profile and ranking.',
-                style: jakartaSans(size: 13, weight: FontWeight.w500, color: kMuted)),
-            const SizedBox(height: 14),
-            ...PrivacyMode.values.map((m) {
-              final disabled = m == PrivacyMode.public && widget.profile.isProtected;
-              final selected = m == _privacy;
-              return _PrivacyOption(
-                mode: m,
-                selected: selected,
-                disabled: disabled,
-                onTap: _saving || disabled ? null : () => _setPrivacy(m),
-              );
-            }),
-
-            const SizedBox(height: 28),
-            Text('Account',
-                style: jakartaSans(size: 14, weight: FontWeight.w700, color: kMuted)),
-            const SizedBox(height: 14),
-            _ActionRow(
-              icon: Icons.logout_rounded,
-              label: 'Log out',
-              color: kText,
-              onTap: _logout,
+            Text(
+              'Privacidad',
+              style: textTheme.bodySmall?.copyWith(color: textSecondary),
             ),
             const SizedBox(height: 10),
-            _ActionRow(
-              icon: Icons.delete_outline_rounded,
-              label: 'Delete account',
-              color: kRed,
-              onTap: () => showToast(context, 'Account deletion coming soon.'),
+            _SegmentedControl<PrivacyMode>(
+              value: _privacy,
+              options: PrivacyMode.values,
+              labelOf: (m) => _privacyLabels[m]!,
+              onChanged: _setPrivacy,
+            ),
+
+            const SizedBox(height: 26),
+            _ToggleRow(
+              title: 'Participar en rankings',
+              subtitle: 'Comparte tu posición con tus amigos.',
+              value: _rankingOptIn,
+              onChanged: _setRankingOptIn,
+            ),
+
+            const SizedBox(height: 26),
+            Text(
+              'Modo oscuro',
+              style: textTheme.bodySmall?.copyWith(color: textSecondary),
+            ),
+            const SizedBox(height: 10),
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeModeNotifier,
+              builder: (context, mode, _) => _SegmentedControl<ThemeMode>(
+                value: mode,
+                options: ThemeMode.values,
+                labelOf: (m) => _themeLabels[m]!,
+                onChanged: _setThemeMode,
+              ),
+            ),
+
+            const SizedBox(height: 40),
+            Center(
+              child: TextButton(
+                onPressed: _confirmLogout,
+                child: const Text('Cerrar sesión'),
+              ),
+            ),
+            Center(
+              child: TextButton(
+                style: TextButton.styleFrom(foregroundColor: candelaDanger),
+                onPressed: _confirmDeleteAccount,
+                child: const Text('Eliminar cuenta'),
+              ),
             ),
           ],
         ),
@@ -150,118 +214,100 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-class _PrivacyOption extends StatelessWidget {
-  final PrivacyMode mode;
-  final bool selected;
-  final bool disabled;
-  final VoidCallback? onTap;
-
-  const _PrivacyOption({
-    required this.mode,
-    required this.selected,
-    required this.disabled,
-    this.onTap,
+// ─── Segmented control ────────────────────────────────────────────────────────
+class _SegmentedControl<T> extends StatelessWidget {
+  final T value;
+  final List<T> options;
+  final String Function(T) labelOf;
+  final ValueChanged<T> onChanged;
+  const _SegmentedControl({
+    required this.value,
+    required this.options,
+    required this.labelOf,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Opacity(
-        opacity: disabled ? 0.45 : 1,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: selected ? kSoftRed : kBg,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-                color: selected ? kRed : kBorder, width: selected ? 1.5 : 1),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                switch (mode) {
-                  PrivacyMode.public => Icons.public_rounded,
-                  PrivacyMode.friends => Icons.group_rounded,
-                  PrivacyMode.private => Icons.lock_rounded,
-                },
-                size: 22,
-                color: selected ? kRed : kMuted,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(mode.label,
-                            style: jakartaSans(size: 15, weight: FontWeight.w700)),
-                        if (disabled) ...[
-                          const SizedBox(width: 8),
-                          Text('(protected)',
-                              style: jakartaSans(
-                                  size: 12, weight: FontWeight.w600, color: kMuted)),
-                        ],
-                      ],
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: borderInactive.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(radiusPill),
+      ),
+      child: Row(
+        children: [
+          for (final option in options)
+            Expanded(
+              child: GestureDetector(
+                onTap: () => onChanged(option),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: option == value ? candelaAmber : Colors.transparent,
+                    borderRadius: BorderRadius.circular(radiusPill),
+                  ),
+                  child: Text(
+                    labelOf(option),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: option == value ? Colors.white : textSecondary,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 2),
-                    Text(mode.blurb,
-                        style: jakartaSans(
-                            size: 12.5, weight: FontWeight.w500, color: kMuted)),
-                  ],
+                  ),
                 ),
               ),
-              if (selected)
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: const BoxDecoration(color: kRed, shape: BoxShape.circle),
-                  child: const Icon(Icons.check_rounded, size: 14, color: Colors.white),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Toggle row ───────────────────────────────────────────────────────────────
+class _ToggleRow extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const _ToggleRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: textTheme.bodySmall?.copyWith(color: textSecondary),
+              ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _ActionRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ActionRow({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-        decoration: BoxDecoration(
-          color: kField,
-          borderRadius: BorderRadius.circular(14),
+        Switch.adaptive(
+          value: value,
+          activeTrackColor: candelaAmber,
+          onChanged: onChanged,
         ),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(width: 12),
-            Text(label,
-                style: jakartaSans(size: 15, weight: FontWeight.w700, color: color)),
-            const Spacer(),
-            Icon(Icons.chevron_right_rounded, size: 20, color: kMuted),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }

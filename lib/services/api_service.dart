@@ -1,66 +1,66 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../config.dart';
 import '../models.dart';
 import 'auth_service.dart';
-import 'demo_data.dart';
 
-/// Authenticated client for all `/api/...` calls described in FRONTEND_GUIDE.md.
-///
-/// When the backend is unreachable (no server running in local dev) the client
-/// transparently falls back to [DemoData] so the UI is fully explorable. Set
-/// [ApiService.useDemoFallback] to `false` to surface real network errors.
+/// Thrown when a request fails because the stored session token is missing,
+/// invalid, or rejected by the server with a 401. Callers should clear local
+/// state and route to the login screen.
+class SessionExpiredException implements Exception {
+  const SessionExpiredException();
+
+  @override
+  String toString() => 'Session expired';
+}
+
+/// Typed client for all `/api/...` endpoints described in
+/// CANDELA_API_CHANGELOG.md and CANDELA_MVP_1.0.md.
 class ApiService {
-  static const String base = 'http://localhost:8080';
-  static bool useDemoFallback = true;
+  static const String baseUrl = apiBaseUrl;
+
+  /// HTTP client used for every request. Overridable in tests with a mock
+  /// (e.g. `http.testing.MockClient`).
+  static http.Client client = http.Client();
+
+  /// Set by the app shell so the API layer can trigger a logout/navigation
+  /// without holding a `BuildContext` (e.g. on a 401 or a missing account).
+  static void Function()? onSessionExpired;
 
   // ── Low-level helpers ──────────────────────────────────────────────────────
-  static Future<Map<String, String>> _headers() async {
-    final token = await TokenStorage.get();
-    return {
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
+  static Future<Map<String, String>> _headers({bool auth = true}) async {
+    final headers = {'Content-Type': 'application/json'};
+    if (auth) {
+      final token = await TokenStorage.get();
+      if (token == null || token.isEmpty) {
+        onSessionExpired?.call();
+        throw const SessionExpiredException();
+      }
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
   }
 
-  static Never _raise(int status, Map<String, dynamic>? body) {
-    final msg = (body?['error'] as String?) ?? switch (status) {
-      401 => 'Your session expired. Please log in again.',
-      403 => 'Action not allowed.',
-      404 => 'Not found.',
-      409 => 'That conflicts with something that already exists.',
-      422 => 'That request was rejected.',
-      429 => 'Too many attempts. Please wait and try again.',
-      _ => 'Something went wrong. Please try again later.',
-    };
-    throw ApiException(message: msg, statusCode: status);
-  }
-
-  static Future<dynamic> _get(String path) async {
-    final res = await http.get(Uri.parse('$base$path'), headers: await _headers());
+  static Future<dynamic> _handle(http.Response res, {bool auth = true}) async {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return res.body.isEmpty ? null : jsonDecode(res.body);
     }
-    _raise(res.statusCode, _tryDecode(res.body));
-  }
-
-  static Future<dynamic> _post(String path, [Map<String, dynamic>? data]) async {
-    final res = await http.post(
-      Uri.parse('$base$path'),
-      headers: await _headers(),
-      body: data == null ? null : jsonEncode(data),
-    );
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      return res.body.isEmpty ? null : jsonDecode(res.body);
+    // A 401 on an authenticated request means the stored token is invalid or
+    // expired — log the user out. A 401 on an unauthenticated endpoint (e.g.
+    // login with wrong credentials) is just a regular API error to surface.
+    if (res.statusCode == 401 && auth) {
+      await TokenStorage.clear();
+      onSessionExpired?.call();
+      throw const SessionExpiredException();
     }
-    _raise(res.statusCode, _tryDecode(res.body));
-  }
-
-  static Future<void> _delete(String path) async {
-    final res =
-        await http.delete(Uri.parse('$base$path'), headers: await _headers());
-    if (res.statusCode >= 200 && res.statusCode < 300) return;
-    _raise(res.statusCode, _tryDecode(res.body));
+    final body = _tryDecode(res.body);
+    final msg =
+        (body?['error'] as String?) ??
+        (res.statusCode == 401
+            ? 'Incorrect email or password.'
+            : 'Something went wrong. Please try again later.');
+    throw ApiException(message: msg, statusCode: res.statusCode);
   }
 
   static Map<String, dynamic>? _tryDecode(String body) {
@@ -71,164 +71,333 @@ class ApiService {
     }
   }
 
-  static bool _isNetwork(Object e) =>
-      e is! ApiException; // network/parse errors aren't ApiException
+  static Future<dynamic> _get(String path, {bool auth = true}) async {
+    final res = await client
+        .get(Uri.parse('$baseUrl$path'), headers: await _headers(auth: auth))
+        .timeout(apiTimeout);
+    return _handle(res, auth: auth);
+  }
+
+  static Future<dynamic> _post(
+    String path, [
+    Map<String, dynamic>? data,
+    bool auth = true,
+  ]) async {
+    final res = await client
+        .post(
+          Uri.parse('$baseUrl$path'),
+          headers: await _headers(auth: auth),
+          body: data == null ? null : jsonEncode(data),
+        )
+        .timeout(apiTimeout);
+    return _handle(res, auth: auth);
+  }
+
+  static Future<dynamic> _patch(
+    String path, [
+    Map<String, dynamic>? data,
+  ]) async {
+    final res = await client
+        .patch(
+          Uri.parse('$baseUrl$path'),
+          headers: await _headers(),
+          body: data == null ? null : jsonEncode(data),
+        )
+        .timeout(apiTimeout);
+    return _handle(res);
+  }
+
+  static Future<dynamic> _delete(String path) async {
+    final res = await client
+        .delete(Uri.parse('$baseUrl$path'), headers: await _headers())
+        .timeout(apiTimeout);
+    return _handle(res);
+  }
+
+  static Map<String, dynamic> _asMap(dynamic j) =>
+      (j as Map).cast<String, dynamic>();
+
+  // ── Auth ───────────────────────────────────────────────────────────────────
+  static Future<AuthResult> register({
+    required String email,
+    required String username,
+    required String password,
+    required String birthDate,
+  }) async {
+    final j = await _post('/api/auth/register', {
+      'email': email,
+      'username': username,
+      'password': password,
+      'birth_date': birthDate,
+    }, false);
+    final m = _asMap(j);
+    return AuthResult(token: m['token'] as String, user: _asMap(m['user']));
+  }
+
+  static Future<AuthResult> login({
+    required String email,
+    required String password,
+  }) async {
+    final j = await _post('/api/auth/login', {
+      'email': email,
+      'password': password,
+    }, false);
+    final m = _asMap(j);
+    return AuthResult(token: m['token'] as String, user: _asMap(m['user']));
+  }
+
+  static Future<AuthResult> loginWithGoogle({required String idToken}) async {
+    final j = await _post('/api/auth/google', {'id_token': idToken}, false);
+    final m = _asMap(j);
+    return AuthResult(token: m['token'] as String, user: _asMap(m['user']));
+  }
+
+  static Future<void> deleteAccount() async {
+    await _delete('/api/me');
+    await TokenStorage.clear();
+  }
 
   // ── Profile ────────────────────────────────────────────────────────────────
-  static Future<MyProfile> me() async {
+  static Future<User> getMyProfile() async {
     try {
       final j = await _get('/api/me');
-      return MyProfile.fromJson(j as Map<String, dynamic>);
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.profile;
+      return User.fromJson(_asMap(j));
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) {
+        // The account behind the stored token no longer exists — log out.
+        await TokenStorage.clear();
+        onSessionExpired?.call();
+        throw const SessionExpiredException();
+      }
       rethrow;
     }
   }
 
-  static Future<List<CheckIn>> myCheckIns() async {
-    try {
-      final j = await _get('/api/me/check-ins');
-      final list = (j?['check_ins'] as List? ?? []);
-      return list.map((e) => CheckIn.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.checkIns;
-      rethrow;
-    }
+  static Future<PublicProfile> getPublicProfile(String username) async {
+    final j = await _get('/api/users/$username');
+    return PublicProfile.fromJson(_asMap(j));
+  }
+
+  static Future<void> updatePrivacy(PrivacyMode mode) =>
+      _patch('/api/me/privacy', {'privacy_mode': mode.raw});
+
+  static Future<bool> updateRankingOptIn(bool optIn) async {
+    final j = await _patch('/api/me/ranking', {'ranking_opt_in': optIn});
+    return _asMap(j)['ranking_opt_in'] == true;
+  }
+
+  // ── Check-in ───────────────────────────────────────────────────────────────
+  static Future<CheckInInitiation> initiateCheckIn({
+    required String placeId,
+    required double lat,
+    required double lon,
+  }) async {
+    final j = await _post('/api/places/$placeId/checkin/initiate', {
+      'lat': lat,
+      'lon': lon,
+    });
+    return CheckInInitiation.fromJson(_asMap(j));
+  }
+
+  static Future<ConfirmCheckInResult> confirmCheckIn({
+    required String placeId,
+    required String checkinNonce,
+    required String photoKey,
+    bool photoIsPermanent = false,
+  }) async {
+    final j = await _post('/api/places/$placeId/checkin/confirm', {
+      'checkin_nonce': checkinNonce,
+      'photo_key': photoKey,
+      'photo_is_permanent': photoIsPermanent,
+    });
+    return ConfirmCheckInResult.fromJson(_asMap(j));
+  }
+
+  static Future<bool> setPhotoPermanent(
+    String checkinId,
+    bool permanent,
+  ) async {
+    final j = await _patch('/api/checkins/$checkinId/permanent', {
+      'permanent': permanent,
+    });
+    return _asMap(j)['photo_is_permanent'] == true;
   }
 
   // ── Feed ───────────────────────────────────────────────────────────────────
-  static Future<List<FeedEvent>> feed() async {
-    try {
-      final j = await _get('/api/feed?limit=20');
-      final list = (j?['events'] as List? ?? []);
-      return list.map((e) => FeedEvent.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.feed;
-      rethrow;
+  static Future<List<CheckInEvent>> getFeed({
+    String? cursor,
+    int limit = 20,
+  }) async {
+    final query = StringBuffer('?limit=$limit');
+    if (cursor != null) {
+      query.write('&before=${Uri.encodeQueryComponent(cursor)}');
     }
+    final j = await _get('/api/feed$query');
+    final m = _asMap(j);
+    return ((m['events'] ?? m['rankings']) as List? ?? const [])
+        .map((e) => CheckInEvent.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  // ── Rankings ───────────────────────────────────────────────────────────────
-  static Future<(List<RankingEntry>, int?)> globalRanking(String? meId) async {
-    try {
-      final j = await _get('/api/rankings/global');
-      final list = (j?['rankings'] as List? ?? j?['entries'] as List? ?? []);
-      final rank = (j?['user_rank'] as num?)?.toInt();
-      return (
-        list
-            .map((e) => RankingEntry.fromJson(e as Map<String, dynamic>, meId: meId))
-            .toList(),
-        rank,
-      );
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return (DemoData.globalRanking, 7);
-      rethrow;
+  static Future<List<CheckInEvent>> getEventFeed(
+    String placeId, {
+    String? cursor,
+    int limit = 20,
+  }) async {
+    final query = StringBuffer('?limit=$limit');
+    if (cursor != null) {
+      query.write('&before=${Uri.encodeQueryComponent(cursor)}');
     }
+    final j = await _get('/api/places/$placeId/feed$query');
+    final m = _asMap(j);
+    return (m['events'] as List? ?? const [])
+        .map((e) => CheckInEvent.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  static Future<List<RankingEntry>> friendsRanking(String? meId) async {
-    try {
-      final j = await _get('/api/rankings/friends');
-      final list = (j?['rankings'] as List? ?? j?['entries'] as List? ?? []);
-      return list
-          .map((e) => RankingEntry.fromJson(e as Map<String, dynamic>, meId: meId))
-          .toList();
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.friendsRanking;
-      rethrow;
-    }
+  // ── Places ─────────────────────────────────────────────────────────────────
+  static Future<List<Place>> getNearbyPlaces({
+    required double lat,
+    required double lon,
+  }) async {
+    final j = await _get('/api/places/nearby?lat=$lat&lon=$lon');
+    final list = j is List ? j : (_asMap(j)['data'] as List? ?? const []);
+    return list.map((e) => Place.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<Place> getPlaceDetail(String placeId) async {
+    final j = await _get('/api/places/$placeId');
+    return Place.fromJson(_asMap(j));
+  }
+
+  // ── Follow ─────────────────────────────────────────────────────────────────
+  static Future<(bool, int)> followPlace(String placeId) async {
+    final j = await _post('/api/places/$placeId/follow');
+    final m = _asMap(j);
+    return (m['following'] == true, _intOf(m['follower_count']));
+  }
+
+  static Future<(bool, int)> unfollowPlace(String placeId) async {
+    final j = await _delete('/api/places/$placeId/follow');
+    final m = _asMap(j);
+    return (m['following'] == true, _intOf(m['follower_count']));
+  }
+
+  // ── Plans ──────────────────────────────────────────────────────────────────
+  static Future<Plan> createPlan({
+    required String targetUserId,
+    required String placeId,
+    required String message,
+    required int deadlineHours,
+  }) async {
+    final j = await _post('/api/plans', {
+      'target_user_id': targetUserId,
+      'place_id': placeId,
+      'message': message,
+      'deadline_hours': deadlineHours,
+    });
+    return Plan.fromJson(_asMap(j));
+  }
+
+  static Future<List<Plan>> getIncomingPlans() async {
+    final j = await _get('/api/plans/incoming');
+    final m = _asMap(j);
+    return (m['plans'] as List? ?? const [])
+        .map((e) => Plan.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<List<Plan>> getOutgoingPlans() async {
+    final j = await _get('/api/plans/outgoing');
+    final m = _asMap(j);
+    return (m['plans'] as List? ?? const [])
+        .map((e) => Plan.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<Plan> getPlanById(String planId) async {
+    final j = await _get('/api/plans/$planId');
+    return Plan.fromJson(_asMap(j));
+  }
+
+  static Future<Plan> acceptPlan(String planId) async {
+    final j = await _post('/api/plans/$planId/accept');
+    return Plan.fromJson(_asMap(j));
+  }
+
+  static Future<Plan> declinePlan(String planId) async {
+    final j = await _post('/api/plans/$planId/decline');
+    return Plan.fromJson(_asMap(j));
+  }
+
+  static Future<Plan> cancelPlan(String planId) async {
+    final j = await _post('/api/plans/$planId/cancel');
+    return Plan.fromJson(_asMap(j));
   }
 
   // ── Friends ────────────────────────────────────────────────────────────────
-  static Future<List<UserRef>> friends() async {
-    try {
-      final j = await _get('/api/me/friends');
-      final list = (j?['friends'] as List? ?? []);
-      return list.map((e) => UserRef.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.friends;
-      rethrow;
-    }
-  }
-
-  static Future<List<FriendRequest>> incomingRequests() async {
-    try {
-      final j = await _get('/api/friend-requests/incoming');
-      final list = (j?['requests'] as List? ?? []);
-      return list
-          .map((e) => FriendRequest.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.incoming;
-      rethrow;
-    }
-  }
-
-  static Future<void> acceptRequest(String userId) =>
-      _post('/api/friend-requests/$userId/accept');
-
-  static Future<void> rejectRequest(String userId) =>
-      _post('/api/friend-requests/$userId/reject');
-
   static Future<void> sendFriendRequest(String userId) =>
       _post('/api/users/$userId/friend-request');
+
+  static Future<void> acceptFriendRequest(String userId) =>
+      _post('/api/friend-requests/$userId/accept');
+
+  static Future<void> rejectFriendRequest(String userId) =>
+      _post('/api/friend-requests/$userId/reject');
+
+  static Future<void> cancelFriendRequest(String userId) =>
+      _delete('/api/friend-requests/$userId');
 
   static Future<void> removeFriend(String userId) =>
       _delete('/api/users/$userId/friend');
 
-  // ── Challenges ─────────────────────────────────────────────────────────────
-  static Future<List<Challenge>> activeChallenges() async {
-    try {
-      final j = await _get('/api/me/challenges?status=active');
-      final list = (j?['challenges'] as List? ?? j as List? ?? []);
-      return list.map((e) => Challenge.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.activeChallenges;
-      rethrow;
-    }
+  static Future<List<FeedUser>> getFriends() async {
+    final j = await _get('/api/me/friends');
+    final m = _asMap(j);
+    return (m['friends'] as List? ?? const [])
+        .map((e) => FeedUser.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  static Future<List<Challenge>> incomingChallenges() async {
-    try {
-      final j = await _get('/api/challenges/incoming');
-      final list = (j?['challenges'] as List? ?? j as List? ?? []);
-      return list.map((e) => Challenge.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.incomingChallenges;
-      rethrow;
-    }
+  static Future<List<FriendRequest>> getIncomingRequests() async {
+    final j = await _get('/api/friend-requests/incoming');
+    final m = _asMap(j);
+    return (m['requests'] as List? ?? const [])
+        .map((e) => FriendRequest.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  static Future<void> acceptChallenge(String id) =>
-      _post('/api/challenges/$id/accept');
-
-  static Future<void> rejectChallenge(String id) =>
-      _post('/api/challenges/$id/reject');
-
-  static Future<void> createChallenge({
-    required String targetUserId,
-    required String placeId,
-    required int deadlineHours,
-  }) =>
-      _post('/api/challenges', {
-        'target_user_id': targetUserId,
-        'place_id': placeId,
-        'deadline_hours': deadlineHours,
-      });
-
-  // ── Places ─────────────────────────────────────────────────────────────────
-  static Future<List<Place>> nearbyPlaces() async {
-    try {
-      final j = await _get('/api/places/nearby');
-      final list = (j?['places'] as List? ?? j as List? ?? []);
-      return list.map((e) => Place.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (e) {
-      if (useDemoFallback && _isNetwork(e)) return DemoData.places;
-      rethrow;
-    }
+  static Future<List<FriendRequest>> getOutgoingRequests() async {
+    final j = await _get('/api/friend-requests/outgoing');
+    final m = _asMap(j);
+    return (m['requests'] as List? ?? const [])
+        .map((e) => FriendRequest.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  // ── Privacy ────────────────────────────────────────────────────────────────
-  static Future<void> updatePrivacy(PrivacyMode mode) =>
-      _post('/api/me/privacy', {'privacy_mode': mode.raw});
+  // ── Block ──────────────────────────────────────────────────────────────────
+  static Future<void> blockUser(String userId) =>
+      _post('/api/users/$userId/block');
+
+  static Future<void> unblockUser(String userId) =>
+      _delete('/api/users/$userId/block');
+
+  // ── Rankings ───────────────────────────────────────────────────────────────
+  static Future<RankingResponse> getGlobalRanking() async {
+    final j = await _get('/api/rankings/global');
+    return RankingResponse.fromJson(_asMap(j));
+  }
+
+  static Future<RankingResponse> getFriendsRanking() async {
+    final j = await _get('/api/rankings/friends');
+    return RankingResponse.fromJson(_asMap(j));
+  }
+
+  // ── Reports ────────────────────────────────────────────────────────────────
+  static Future<Report> createReport(CreateReportRequest request) async {
+    final j = await _post('/api/reports', request.toJson());
+    return Report.fromJson(_asMap(j));
+  }
+
+  static int _intOf(Object? v) => (v as num?)?.toInt() ?? 0;
 }

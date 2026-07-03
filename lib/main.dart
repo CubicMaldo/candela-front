@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'theme.dart';
 import 'services/auth_service.dart';
+import 'services/api_service.dart';
 import 'auth/welcome_screen.dart';
 import 'app/home_shell.dart';
-import 'auth/widgets.dart' show LokalLogo;
+
+/// Global navigation/messenger handles so non-widget code (e.g. the API layer
+/// catching a `SessionExpiredException`) can route back to the welcome screen
+/// and surface a snackbar without a `BuildContext`.
+final navigatorKey = GlobalKey<NavigatorState>();
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+/// User-forceable dark/light/system override, set from the Settings screen.
+final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.system);
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,19 +24,65 @@ void main() {
       statusBarIconBrightness: Brightness.dark,
     ),
   );
-  runApp(const LokalApp());
+  // Let the API layer trigger an automatic logout — without holding a
+  // BuildContext — whenever it sees a 401 or finds the account is gone.
+  ApiService.onSessionExpired = () => handleSessionExpired();
+  runApp(const CandelaApp());
 }
 
-class LokalApp extends StatelessWidget {
-  const LokalApp({super.key});
+bool _handlingSessionExpired = false;
+
+/// Clears the stored session and routes back to the welcome screen with a
+/// brief explanation. Call this wherever `ApiService` throws
+/// `SessionExpiredException` (401 from the server, or a missing account).
+Future<void> handleSessionExpired() async {
+  if (_handlingSessionExpired) return;
+  _handlingSessionExpired = true;
+  try {
+    await TokenStorage.clear();
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      (_) => false,
+    );
+    scaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Tu sesión expiró. Vuelve a entrar.',
+          style: GoogleFonts.plusJakartaSans(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: surfaceDark,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMedium),
+        ),
+        margin: const EdgeInsets.all(spacingScreen),
+      ),
+    );
+  } finally {
+    _handlingSessionExpired = false;
+  }
+}
+
+class CandelaApp extends StatelessWidget {
+  const CandelaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Lokal',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      home: const HomeShell(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, mode, _) => MaterialApp(
+        navigatorKey: navigatorKey,
+        scaffoldMessengerKey: scaffoldMessengerKey,
+        title: 'Candela',
+        debugShowCheckedModeBanner: false,
+        theme: CandleTheme.light(),
+        darkTheme: CandleTheme.dark(),
+        themeMode: mode,
+        home: const _Root(),
+      ),
     );
   }
 }
@@ -50,8 +106,8 @@ class _RootState extends State<_Root> {
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            backgroundColor: kBg,
-            body: Center(child: LokalLogo(size: 56)),
+            backgroundColor: candelaNight,
+            body: Center(child: CircularProgressIndicator(color: candelaAmber)),
           );
         }
         final hasToken = (snap.data ?? '').isNotEmpty;

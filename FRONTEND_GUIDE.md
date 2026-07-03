@@ -1,4 +1,4 @@
-# Nomad API — Frontend Integration Guide
+# Candela API — Frontend Integration Guide
 
 Everything here is derived from the actual server implementation. Do not guess behavior — read this document.
 

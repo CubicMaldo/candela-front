@@ -1,6 +1,185 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
+
+// ─── Shared loading spinner ───────────────────────────────────────────────────
+/// The single amber spinner used across the app. Use [CandelaLoader.centered]
+/// to drop it into the middle of a screen or sheet.
+class CandelaLoader extends StatelessWidget {
+  const CandelaLoader({
+    super.key,
+    this.size,
+    this.color,
+    this.strokeWidth = 2.5,
+  });
+
+  /// A loader centered with comfortable padding — the common full-area case.
+  const CandelaLoader.centered({super.key})
+    : size = null,
+      color = null,
+      strokeWidth = 2.5;
+
+  final double? size;
+  final Color? color;
+  final double strokeWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final indicator = CircularProgressIndicator(
+      color: color ?? candelaAmber,
+      strokeWidth: strokeWidth,
+    );
+    final sized = size == null
+        ? indicator
+        : SizedBox(width: size, height: size, child: indicator);
+    return Center(
+      child: Padding(padding: const EdgeInsets.all(40), child: sized),
+    );
+  }
+}
+
+// ─── Skeleton loading placeholders ────────────────────────────────────────────
+/// Wraps skeleton placeholders with a subtle pulsing animation. Build the
+/// child out of [SkeletonBox]es that mirror the target layout.
+class Skeleton extends StatefulWidget {
+  final Widget child;
+  const Skeleton({required this.child, super.key});
+
+  @override
+  State<Skeleton> createState() => _SkeletonState();
+}
+
+class _SkeletonState extends State<Skeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween(
+        begin: 0.45,
+        end: 0.9,
+      ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut)),
+      child: widget.child,
+    );
+  }
+}
+
+/// A single grey block used to compose [Skeleton] layouts.
+class SkeletonBox extends StatelessWidget {
+  final double? width;
+  final double height;
+  final double radius;
+  final bool circle;
+  const SkeletonBox({
+    this.width,
+    this.height = 14,
+    this.radius = radiusMedium,
+    this.circle = false,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.10);
+    return Container(
+      width: circle ? height : width,
+      height: height,
+      decoration: BoxDecoration(
+        color: base,
+        shape: circle ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: circle ? null : BorderRadius.circular(radius),
+      ),
+    );
+  }
+}
+
+/// Skeleton for a list of cards (plans, friends, nearby places).
+class ListSkeleton extends StatelessWidget {
+  final int items;
+  const ListSkeleton({this.items = 5, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(
+          spacingScreen,
+          16,
+          spacingScreen,
+          16,
+        ),
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: items,
+        separatorBuilder: (_, _) => const SizedBox(height: spacingCardGap),
+        itemBuilder: (_, _) => Container(
+          padding: const EdgeInsets.all(spacingCard),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(radiusCard),
+          ),
+          child: Row(
+            children: [
+              const SkeletonBox(height: 44, circle: true),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    SkeletonBox(width: 140),
+                    SizedBox(height: 8),
+                    SkeletonBox(width: 90, height: 11),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Skeleton for the full-width photo feed.
+class FeedSkeleton extends StatelessWidget {
+  const FeedSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: List.generate(
+          3,
+          (_) => Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: AspectRatio(
+              aspectRatio: 4 / 3,
+              child: SkeletonBox(
+                height: double.infinity,
+                radius: 0,
+                width: double.infinity,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // ─── Deterministic avatar colour from a username ──────────────────────────────
 const _avatarPalette = [
@@ -35,8 +214,9 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial =
-        username.isNotEmpty ? username.characters.first.toUpperCase() : '?';
+    final initial = username.isNotEmpty
+        ? username.characters.first.toUpperCase()
+        : '?';
     return Container(
       width: size,
       height: size,
@@ -73,9 +253,12 @@ class BadgeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: compact ? 3 : 5),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 3 : 5,
+      ),
       decoration: BoxDecoration(
-        color: badge.color.withValues(alpha: 0.12),
+        color: candelaAmber.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -84,7 +267,10 @@ class BadgeChip extends StatelessWidget {
           Container(
             width: compact ? 6 : 7,
             height: compact ? 6 : 7,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: badge.color),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: candelaAmber,
+            ),
           ),
           SizedBox(width: compact ? 5 : 6),
           Text(
@@ -92,7 +278,7 @@ class BadgeChip extends StatelessWidget {
             style: jakartaSans(
               size: compact ? 11 : 12.5,
               weight: FontWeight.w700,
-              color: badge.color,
+              color: candelaAmber,
             ),
           ),
         ],
@@ -163,17 +349,31 @@ class AppCard extends StatelessWidget {
 }
 
 // ─── Screen title header ──────────────────────────────────────────────────────
+/// iOS-style large-title header: optional back chevron, a big bold title (and
+/// optional subtitle), and an optional trailing action. `padded` wraps it with
+/// the standard screen margins so callers can drop it straight into a column.
 class ScreenHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget? trailing;
-  const ScreenHeader({required this.title, this.subtitle, this.trailing, super.key});
+  final bool showBack;
+  final bool padded;
+  const ScreenHeader({
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.showBack = false,
+    this.padded = true,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final row = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        if (showBack) ...[const CandelaBackButton(), const SizedBox(width: 12)],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,13 +384,18 @@ class ScreenHeader extends StatelessWidget {
                   size: 28,
                   weight: FontWeight.w800,
                   letterSpacing: -0.03 * 28,
+                  color: onSurface,
                 ),
               ),
               if (subtitle != null) ...[
                 const SizedBox(height: 3),
                 Text(
                   subtitle!,
-                  style: jakartaSans(size: 14, weight: FontWeight.w500, color: kMuted),
+                  style: jakartaSans(
+                    size: 14,
+                    weight: FontWeight.w500,
+                    color: kMuted,
+                  ),
                 ),
               ],
             ],
@@ -198,6 +403,11 @@ class ScreenHeader extends StatelessWidget {
         ),
         ?trailing,
       ],
+    );
+    if (!padded) return row;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(spacingScreen, 8, spacingScreen, 8),
+      child: row,
     );
   }
 }
@@ -227,10 +437,7 @@ class EmptyState extends StatelessWidget {
             Container(
               width: 72,
               height: 72,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: kField,
-              ),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: kField),
               child: Icon(icon, size: 32, color: kMuted),
             ),
             const SizedBox(height: 18),
@@ -242,7 +449,11 @@ class EmptyState extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               message,
-              style: jakartaSans(size: 14, weight: FontWeight.w500, color: kMuted),
+              style: jakartaSans(
+                size: 14,
+                weight: FontWeight.w500,
+                color: kMuted,
+              ),
               textAlign: TextAlign.center,
             ),
             if (action != null) ...[const SizedBox(height: 20), action!],
@@ -258,10 +469,16 @@ class AsyncView<T> extends StatelessWidget {
   final Future<T> future;
   final Widget Function(T data) builder;
   final String errorTitle;
+
+  /// Optional placeholder shown while loading (e.g. a skeleton). Defaults to
+  /// the shared amber spinner.
+  final Widget? loading;
+
   const AsyncView({
     required this.future,
     required this.builder,
     this.errorTitle = 'Could not load',
+    this.loading,
     super.key,
   });
 
@@ -271,12 +488,7 @@ class AsyncView<T> extends StatelessWidget {
       future: future,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(40),
-              child: CircularProgressIndicator(color: kRed, strokeWidth: 2.5),
-            ),
-          );
+          return loading ?? const CandelaLoader.centered();
         }
         if (snap.hasError) {
           return EmptyState(
@@ -302,7 +514,7 @@ class PillButton extends StatelessWidget {
   const PillButton({
     required this.label,
     this.onTap,
-    this.color = kRed,
+    this.color = candelaAmber,
     this.filled = true,
     this.icon,
     super.key,
@@ -347,7 +559,11 @@ void showToast(BuildContext context, String message) {
     SnackBar(
       content: Text(
         message,
-        style: jakartaSans(size: 14, weight: FontWeight.w600, color: Colors.white),
+        style: jakartaSans(
+          size: 14,
+          weight: FontWeight.w600,
+          color: Colors.white,
+        ),
       ),
       backgroundColor: kText,
       behavior: SnackBarBehavior.floating,
@@ -355,4 +571,47 @@ void showToast(BuildContext context, String message) {
       margin: const EdgeInsets.all(16),
     ),
   );
+}
+
+// ─── Consistent page transitions ──────────────────────────────────────────────
+/// Push navigation: an iOS-style slide-in with interactive edge-swipe-back on
+/// every platform. Same call-site API as before (`SlideRightRoute(builder:)`).
+class SlideRightRoute<T> extends CupertinoPageRoute<T> {
+  SlideRightRoute({required super.builder});
+}
+
+/// Tab switches: cross-fades between destinations.
+class FadeRoute<T> extends PageRouteBuilder<T> {
+  final WidgetBuilder builder;
+  FadeRoute({required this.builder})
+    : super(
+        pageBuilder: (context, _, _) => builder(context),
+        transitionsBuilder: (context, animation, _, child) =>
+            FadeTransition(opacity: animation, child: child),
+        transitionDuration: const Duration(milliseconds: 200),
+      );
+}
+
+// ─── Shared header & back button ──────────────────────────────────────────────
+/// The single "chevron in a rounded square" back affordance, shared across every
+/// pushed screen (Settings, Friends, History, Check-in…).
+class CandelaBackButton extends StatelessWidget {
+  final VoidCallback? onTap;
+  const CandelaBackButton({this.onTap, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap ?? () => Navigator.maybePop(context),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: borderInactive.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(radiusMedium),
+        ),
+        child: Icon(Icons.chevron_left_rounded, size: 24, color: textSecondary),
+      ),
+    );
+  }
 }

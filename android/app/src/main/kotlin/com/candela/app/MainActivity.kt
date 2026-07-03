@@ -1,4 +1,4 @@
-package com.example.nomad_front
+package com.candela.app
 
 import io.flutter.embedding.android.FlutterActivity
 

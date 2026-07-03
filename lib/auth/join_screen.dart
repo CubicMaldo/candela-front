@@ -1,184 +1,220 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
+import '../app/home_shell.dart';
 import 'widgets.dart';
-import 'email_screen.dart';
 
-class JoinScreen extends StatelessWidget {
+const _underageMessage = 'Pronto Candela estará disponible para ti.';
+
+class JoinScreen extends StatefulWidget {
   const JoinScreen({super.key});
 
-  void _comingSoon(BuildContext context, String provider) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '$provider sign-in coming soon.',
-          style: jakartaSans(size: 14, weight: FontWeight.w600, color: Colors.white),
-        ),
-        backgroundColor: kText,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
+  @override
+  State<JoinScreen> createState() => _JoinScreenState();
+}
+
+class _JoinScreenState extends State<JoinScreen> {
+  final _usernameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _usernameFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+
+  DateTime? _birthDate;
+  bool _obscure = true;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _usernameCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    _usernameFocus.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
+    super.dispose();
+  }
+
+  bool get _canSubmit =>
+      _usernameCtrl.text.trim().isNotEmpty &&
+      _emailCtrl.text.trim().isNotEmpty &&
+      _passwordCtrl.text.isNotEmpty &&
+      _birthDate != null &&
+      !_loading;
+
+  int _ageOf(DateTime birthDate) {
+    final now = DateTime.now();
+    var age = now.year - birthDate.year;
+    if (now.month < birthDate.month ||
+        (now.month == birthDate.month && now.day < birthDate.day)) {
+      age--;
+    }
+    return age;
+  }
+
+  String _formatBirthDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickBirthDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(now.year - 18, now.month, now.day),
+      firstDate: DateTime(now.year - 100),
+      lastDate: now,
+      builder: (ctx, child) => Theme(data: CandleTheme.dark(), child: child!),
     );
+    if (picked != null) setState(() => _birthDate = picked);
+  }
+
+  Future<void> _submit() async {
+    if (!_canSubmit) return;
+    final birthDate = _birthDate!;
+    if (_ageOf(birthDate) < 18) {
+      setState(() => _error = _underageMessage);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final result = await ApiService.register(
+        email: _emailCtrl.text.trim(),
+        username: _usernameCtrl.text.trim(),
+        password: _passwordCtrl.text,
+        birthDate: _formatBirthDate(birthDate),
+      );
+      await TokenStorage.save(result.token);
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeShell()),
+        (_) => false,
+      );
+    } on ApiException catch (e) {
+      setState(() {
+        _error = e.message;
+        _loading = false;
+      });
+    } catch (_) {
+      setState(() {
+        _error = 'Algo salió mal. Inténtalo de nuevo.';
+        _loading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final birthDate = _birthDate;
     return Scaffold(
-      backgroundColor: kBg,
+      backgroundColor: candelaNight,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(26, 22, 26, 30),
+          padding: const EdgeInsets.fromLTRB(
+            spacingScreen,
+            8,
+            spacingScreen,
+            24,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Top: back + logo ─────────────────────────────────────────
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: kField,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.chevron_left_rounded,
-                        size: 26,
-                        color: kText,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const LokalLogo(size: 30),
-                ],
-              ),
-              const SizedBox(height: 34),
-
-              // ── Heading ───────────────────────────────────────────────────
+              const CandelaBackButton(),
+              const SizedBox(height: 28),
               Text(
-                'Create your account',
-                style: jakartaSans(
-                  size: 30,
-                  weight: FontWeight.w800,
-                  letterSpacing: -0.03 * 30,
-                  height: 1.08,
+                'Crea tu cuenta',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: textDarkPrimary,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
-                'Takes less than a minute.',
-                style: jakartaSans(
-                  size: 16,
-                  weight: FontWeight.w500,
-                  color: kMuted,
+                'Toma menos de un minuto.',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  color: textDarkSecondary,
                 ),
               ),
-              const SizedBox(height: 30),
-
-              // ── Social sign-in ────────────────────────────────────────────
-              SocialButton(
-                apple: true,
-                onTap: () => _comingSoon(context, 'Apple'),
-              ),
-              const SizedBox(height: 12),
-              SocialButton(
-                apple: false,
-                onTap: () => _comingSoon(context, 'Google'),
-              ),
-
-              // ── Divider ───────────────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Row(
-                  children: [
-                    const Expanded(child: Divider(color: kBorder, thickness: 1)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      child: Text(
-                        'or',
-                        style: jakartaSans(
-                          size: 13,
-                          weight: FontWeight.w600,
-                          color: kMuted,
-                        ),
-                      ),
-                    ),
-                    const Expanded(child: Divider(color: kBorder, thickness: 1)),
-                  ],
-                ),
-              ),
-
-              // ── Email option ──────────────────────────────────────────────
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const EmailScreen()),
-                ),
-                child: Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: kBorder, width: 1.5),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+              const SizedBox(height: 24),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.mail_outline_rounded,
-                        size: 20,
-                        color: kText,
+                      CandelaTextField(
+                        label: 'Nombre de usuario',
+                        hint: 'tu_usuario',
+                        controller: _usernameCtrl,
+                        focusNode: _usernameFocus,
+                        keyboardType: TextInputType.text,
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Continue with email',
-                        style: jakartaSans(
-                          size: 16,
-                          weight: FontWeight.w600,
+                      const SizedBox(height: spacingCardGap),
+                      CandelaTextField(
+                        label: 'Correo electrónico',
+                        hint: 'tucorreo@email.com',
+                        controller: _emailCtrl,
+                        focusNode: _emailFocus,
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      const SizedBox(height: spacingCardGap),
+                      CandelaTextField(
+                        label: 'Contraseña',
+                        hint: 'Al menos 8 caracteres',
+                        controller: _passwordCtrl,
+                        focusNode: _passwordFocus,
+                        obscureText: _obscure,
+                        keyboardType: TextInputType.visiblePassword,
+                        suffixIcon: GestureDetector(
+                          onTap: () => setState(() => _obscure = !_obscure),
+                          child: Icon(
+                            _obscure
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            size: 20,
+                            color: textDarkSecondary,
+                          ),
                         ),
                       ),
+                      const SizedBox(height: spacingCardGap),
+                      CandelaTextField(
+                        label: 'Fecha de nacimiento',
+                        hint: 'AAAA-MM-DD',
+                        controller: TextEditingController(
+                          text: birthDate == null
+                              ? ''
+                              : _formatBirthDate(birthDate),
+                        ),
+                        readOnly: true,
+                        onTap: _pickBirthDate,
+                        suffixIcon: const Icon(
+                          Icons.calendar_today_outlined,
+                          size: 18,
+                          color: textDarkSecondary,
+                        ),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 16),
+                        CandelaErrorBanner(_error!),
+                      ],
                     ],
                   ),
                 ),
               ),
-
-              const Spacer(),
-
-              // ── Terms ─────────────────────────────────────────────────────
-              Center(
-                child: RichText(
-                  textAlign: TextAlign.center,
-                  text: TextSpan(
-                    style: jakartaSans(
-                      size: 12.5,
-                      weight: FontWeight.w500,
-                      color: kMuted,
-                      height: 1.5,
-                    ),
-                    children: [
-                      const TextSpan(text: 'By continuing you agree to our '),
-                      TextSpan(
-                        text: 'Terms',
-                        style: jakartaSans(
-                          size: 12.5,
-                          weight: FontWeight.w600,
-                          color: kText,
-                        ),
-                      ),
-                      const TextSpan(text: ' & '),
-                      TextSpan(
-                        text: 'Privacy Policy',
-                        style: jakartaSans(
-                          size: 12.5,
-                          weight: FontWeight.w600,
-                          color: kText,
-                        ),
-                      ),
-                      const TextSpan(text: '.'),
-                    ],
-                  ),
-                ),
+              const SizedBox(height: spacingCardGap),
+              CandelaButton(
+                label: 'Crear mi cuenta',
+                loading: _loading,
+                onTap: _canSubmit ? _submit : null,
               ),
             ],
           ),

@@ -1,111 +1,69 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 import 'widgets.dart';
 import 'join_screen.dart';
 import 'login_screen.dart';
 
+/// First screen for unauthenticated users — minimal, dark, premium. The
+/// Candela wordmark over near-black is the most authentic expression of the
+/// brand (see CANDELA_ESPECIFICACIONES_FUNCIONALES.md §3.5).
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBg,
+      backgroundColor: candelaNight,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(26, 16, 26, 30),
+          padding: const EdgeInsets.symmetric(
+            horizontal: spacingScreen,
+            vertical: 32,
+          ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Top: logo + wordmark ─────────────────────────────────────
-              Row(
-                children: [
-                  const LokalLogo(size: 36),
-                  const SizedBox(width: 11),
-                  const Wordmark(size: 21),
-                ],
-              ),
-
-              const Spacer(),
-
-              // ── Middle: headline block ────────────────────────────────────
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const GamificationChip('Level up your city'),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Your city,\nunlocked.',
-                    style: jakartaSans(
-                      size: 42,
-                      weight: FontWeight.w800,
-                      letterSpacing: -0.035 * 42,
-                      height: 1.04,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'Discover the spots locals actually love — and earn your way to local legend.',
-                    style: jakartaSans(
-                      size: 16.5,
-                      weight: FontWeight.w500,
-                      color: kMuted,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 26),
-                  // Social proof
-                  Row(
-                    children: [
-                      const AvatarCluster(count: 4),
-                      const SizedBox(width: 11),
-                      Flexible(
-                        child: RichText(
-                          text: TextSpan(
-                            style: jakartaSans(
-                              size: 13.5,
-                              weight: FontWeight.w600,
-                              color: kMuted,
-                            ),
-                            children: [
-                              TextSpan(
-                                text: '12,400 locals',
-                                style: jakartaSans(
-                                  size: 13.5,
-                                  weight: FontWeight.w600,
-                                  color: kText,
-                                ),
-                              ),
-                              const TextSpan(text: ' exploring nearby'),
-                            ],
-                          ),
-                        ),
+              const Spacer(flex: 3),
+              Center(
+                child: Column(
+                  children: [
+                    Text(
+                      'Candela',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 40,
+                        fontWeight: FontWeight.w700,
+                        color: candelaAmber,
+                        letterSpacing: -0.5,
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Lo que está prendido',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w400,
+                        color: textDarkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-
-              const Spacer(),
-
-              // ── Bottom: CTAs ──────────────────────────────────────────────
-              Column(
-                children: [
-                  PrimaryButton(
-                    label: 'Get started',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const JoinScreen()),
-                    ),
-                  ),
-                  GhostButton(
-                    label: 'I already have an account',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    ),
-                  ),
-                ],
+              const Spacer(flex: 4),
+              CandelaButton(
+                label: 'Entrar',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                ),
+              ),
+              const SizedBox(height: spacingCardGap),
+              CandelaButton(
+                label: 'Crear cuenta',
+                primary: false,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const JoinScreen()),
+                ),
               ),
             ],
           ),

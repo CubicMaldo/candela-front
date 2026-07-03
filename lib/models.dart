@@ -1,29 +1,21 @@
-// Data models for the Nomad API. All `fromJson` constructors tolerate missing
-// or null fields — the backend returns different shapes depending on privacy
-// and photo TTLs (see FRONTEND_GUIDE.md).
-
-import 'theme.dart';
-import 'package:flutter/material.dart';
+// Data models for the Candela API (MVP 1.0). Field names mirror the JSON
+// response keys documented in CANDELA_API_CHANGELOG.md sections 4-6.
 
 // ─── Badge levels ─────────────────────────────────────────────────────────────
-// The server exposes `badge_level` as a string. We map it to a colour + label so
-// the whole app renders reputation consistently.
 enum BadgeLevel {
-  newcomer('NEWCOMER', 'Newcomer', Color(0xFF8A8F94)),
-  explorer('EXPLORER', 'Explorer', Color(0xFF5C9CE8)),
-  local('LOCAL', 'Local', kGreen),
-  insider('INSIDER', 'Insider', Color(0xFFF2B705)),
-  legend('LEGEND', 'Legend', kRed);
+  newcomer('Nuevo en la vuelta'),
+  streetwise('Callejero'),
+  regular('Parroquiano'),
+  veteran('Teso'),
+  legend('Leyenda');
 
-  final String raw;
   final String label;
-  final Color color;
-  const BadgeLevel(this.raw, this.label, this.color);
+  const BadgeLevel(this.label);
 
   static BadgeLevel from(Object? value) {
     if (value is String) {
       for (final b in BadgeLevel.values) {
-        if (b.raw == value.toUpperCase()) return b;
+        if (b.label == value) return b;
       }
     }
     return BadgeLevel.newcomer;
@@ -31,14 +23,12 @@ enum BadgeLevel {
 }
 
 enum PrivacyMode {
-  public('PUBLIC', 'Public', 'Anyone can see your profile and ranking'),
-  friends('FRIENDS', 'Friends only', 'Strangers see only your name & badge'),
-  private('PRIVATE', 'Private', 'Hidden from strangers entirely');
+  public('PUBLIC'),
+  friends('FRIENDS'),
+  private('PRIVATE');
 
   final String raw;
-  final String label;
-  final String blurb;
-  const PrivacyMode(this.raw, this.label, this.blurb);
+  const PrivacyMode(this.raw);
 
   static PrivacyMode from(Object? value) {
     if (value is String) {
@@ -50,277 +40,611 @@ enum PrivacyMode {
   }
 }
 
-// ─── My profile (GET /api/me) ─────────────────────────────────────────────────
-class MyProfile {
-  final String id;
-  final String username;
-  final String? email;
-  final int pointsTotal;
-  final BadgeLevel badge;
-  final PrivacyMode privacy;
-  final bool isProtected;
-  final int checkInCount;
-  final int friendsCount;
-  final int completedChallengesCount;
-  final String? avatarUrl;
+enum PlanStatus {
+  pending('PENDIENTE'),
+  accepted('ACEPTADO'),
+  completed('CONCRETADO'),
+  failed('NO_CONCRETADO'),
+  declined('DECLINADO');
 
-  const MyProfile({
-    required this.id,
-    required this.username,
-    this.email,
-    required this.pointsTotal,
-    required this.badge,
-    required this.privacy,
-    required this.isProtected,
-    required this.checkInCount,
-    required this.friendsCount,
-    required this.completedChallengesCount,
-    this.avatarUrl,
-  });
+  final String raw;
+  const PlanStatus(this.raw);
 
-  factory MyProfile.fromJson(Map<String, dynamic> j) => MyProfile(
-        id: (j['id'] ?? j['sub'] ?? '').toString(),
-        username: (j['username'] ?? 'explorer').toString(),
-        email: j['email'] as String?,
-        pointsTotal: (j['points_total'] as num?)?.toInt() ?? 0,
-        badge: BadgeLevel.from(j['badge_level']),
-        privacy: PrivacyMode.from(j['privacy_mode']),
-        isProtected: j['is_protected'] == true,
-        checkInCount: (j['check_in_count'] as num?)?.toInt() ?? 0,
-        friendsCount: (j['friends_count'] as num?)?.toInt() ?? 0,
-        completedChallengesCount:
-            (j['completed_challenges_count'] as num?)?.toInt() ?? 0,
-        avatarUrl: j['avatar_url'] as String?,
-      );
+  static PlanStatus from(Object? value) {
+    if (value is String) {
+      for (final s in PlanStatus.values) {
+        if (s.raw == value.toUpperCase()) return s;
+      }
+    }
+    return PlanStatus.pending;
+  }
 }
 
-// ─── A place ──────────────────────────────────────────────────────────────────
+DateTime _parseDate(Object? v) =>
+    DateTime.tryParse(v?.toString() ?? '') ??
+    DateTime.fromMillisecondsSinceEpoch(0);
+
+DateTime? _parseDateOrNull(Object? v) {
+  if (v == null) return null;
+  return DateTime.tryParse(v.toString());
+}
+
+int _parseInt(Object? v) => (v as num?)?.toInt() ?? 0;
+
+// ─── User (own profile — GET /api/me) ────────────────────────────────────────
+class User {
+  final String userId;
+  final String email;
+  final String username;
+  final PrivacyMode privacyMode;
+  final String accountStatus;
+  final int pointsTotal;
+  final int pointsSeason;
+  final BadgeLevel badgeLevel;
+  final int streakWeeksCurrent;
+  final int streakWeeksMax;
+  final int streakWeekCheckins;
+  final bool rankingOptIn;
+  final int checkInCount;
+  final int friendsCount;
+  final int completedPlansCount;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const User({
+    required this.userId,
+    required this.email,
+    required this.username,
+    required this.privacyMode,
+    required this.accountStatus,
+    required this.pointsTotal,
+    required this.pointsSeason,
+    required this.badgeLevel,
+    required this.streakWeeksCurrent,
+    required this.streakWeeksMax,
+    required this.streakWeekCheckins,
+    required this.rankingOptIn,
+    required this.checkInCount,
+    required this.friendsCount,
+    required this.completedPlansCount,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory User.fromJson(Map<String, dynamic> j) => User(
+    userId: (j['user_id'] ?? '').toString(),
+    email: (j['email'] ?? '').toString(),
+    username: (j['username'] ?? '').toString(),
+    privacyMode: PrivacyMode.from(j['privacy_mode']),
+    accountStatus: (j['account_status'] ?? '').toString(),
+    pointsTotal: _parseInt(j['points_total']),
+    pointsSeason: _parseInt(j['points_season']),
+    badgeLevel: BadgeLevel.from(j['badge_level']),
+    streakWeeksCurrent: _parseInt(j['streak_weeks_current']),
+    streakWeeksMax: _parseInt(j['streak_weeks_max']),
+    streakWeekCheckins: _parseInt(j['streak_week_checkins']),
+    rankingOptIn: j['ranking_opt_in'] == true,
+    checkInCount: _parseInt(j['check_in_count']),
+    friendsCount: _parseInt(j['friends_count']),
+    completedPlansCount: _parseInt(j['completed_plans_count']),
+    createdAt: _parseDate(j['created_at']),
+    updatedAt: _parseDate(j['updated_at']),
+  );
+}
+
+// ─── PublicProfile (GET /api/users/:username) ────────────────────────────────
+class PublicProfile {
+  final String userId;
+  final String username;
+  final BadgeLevel badgeLevel;
+  final int? pointsTotal;
+  final int streakWeeksCurrent;
+  final int streakWeeksMax;
+  final int checkInCount;
+  final DateTime createdAt;
+
+  const PublicProfile({
+    required this.userId,
+    required this.username,
+    required this.badgeLevel,
+    this.pointsTotal,
+    required this.streakWeeksCurrent,
+    required this.streakWeeksMax,
+    required this.checkInCount,
+    required this.createdAt,
+  });
+
+  factory PublicProfile.fromJson(Map<String, dynamic> j) => PublicProfile(
+    userId: (j['user_id'] ?? '').toString(),
+    username: (j['username'] ?? '').toString(),
+    badgeLevel: BadgeLevel.from(j['badge_level']),
+    pointsTotal: (j['points_total'] as num?)?.toInt(),
+    streakWeeksCurrent: _parseInt(j['streak_weeks_current']),
+    streakWeeksMax: _parseInt(j['streak_weeks_max']),
+    checkInCount: _parseInt(j['check_in_count']),
+    createdAt: _parseDate(j['created_at']),
+  );
+}
+
+// ─── Place ────────────────────────────────────────────────────────────────────
 class Place {
-  final String id;
+  final String placeId;
   final String name;
-  final String? category;
-  final double? distanceMeters;
-  final double? lat;
-  final double? lon;
+  final String category;
+  final double lat;
+  final double lon;
+  final int geofenceMeters;
+  final bool isVerified;
+  final bool isActive;
+  final bool isFollowed;
+  final int activeCheckinsCount;
+  final DateTime? lastCheckinAt;
+  final int followerCount;
 
   const Place({
-    required this.id,
+    required this.placeId,
     required this.name,
-    this.category,
-    this.distanceMeters,
-    this.lat,
-    this.lon,
+    required this.category,
+    required this.lat,
+    required this.lon,
+    required this.geofenceMeters,
+    required this.isVerified,
+    required this.isActive,
+    required this.isFollowed,
+    required this.activeCheckinsCount,
+    this.lastCheckinAt,
+    required this.followerCount,
   });
 
   factory Place.fromJson(Map<String, dynamic> j) => Place(
-        id: (j['id'] ?? '').toString(),
-        name: (j['name'] ?? 'Unknown place').toString(),
-        category: j['category'] as String?,
-        distanceMeters: (j['distance_meters'] as num?)?.toDouble(),
-        lat: (j['lat'] as num?)?.toDouble(),
-        lon: (j['lon'] as num?)?.toDouble(),
-      );
+    placeId: (j['place_id'] ?? '').toString(),
+    name: (j['name'] ?? '').toString(),
+    category: (j['category'] ?? '').toString(),
+    lat: (j['lat'] as num?)?.toDouble() ?? 0,
+    lon: (j['lon'] as num?)?.toDouble() ?? 0,
+    geofenceMeters: _parseInt(j['geofence_meters']),
+    isVerified: j['is_verified'] == true,
+    isActive: j['is_active'] == true,
+    isFollowed: j['is_followed'] == true,
+    activeCheckinsCount: _parseInt(j['active_checkins_count']),
+    lastCheckinAt: _parseDateOrNull(j['last_checkin_at']),
+    followerCount: _parseInt(j['follower_count']),
+  );
 
-  String? get distanceLabel {
-    final d = distanceMeters;
-    if (d == null) return null;
-    if (d < 1000) return '${d.round()} m';
-    return '${(d / 1000).toStringAsFixed(1)} km';
-  }
+  Place copyWith({bool? isFollowed, int? followerCount}) => Place(
+    placeId: placeId,
+    name: name,
+    category: category,
+    lat: lat,
+    lon: lon,
+    geofenceMeters: geofenceMeters,
+    isVerified: isVerified,
+    isActive: isActive,
+    isFollowed: isFollowed ?? this.isFollowed,
+    activeCheckinsCount: activeCheckinsCount,
+    lastCheckinAt: lastCheckinAt,
+    followerCount: followerCount ?? this.followerCount,
+  );
 }
 
-// ─── A lightweight user reference (feed, rankings, friends) ────────────────────
-class UserRef {
-  final String id;
+// ─── Feed embedded refs ──────────────────────────────────────────────────────
+class FeedUser {
+  final String userId;
   final String username;
-  final BadgeLevel badge;
-  final String? avatarUrl;
+  final BadgeLevel badgeLevel;
+  final bool isFriend;
 
-  const UserRef({
-    required this.id,
+  const FeedUser({
+    required this.userId,
     required this.username,
-    required this.badge,
-    this.avatarUrl,
+    required this.badgeLevel,
+    required this.isFriend,
   });
 
-  factory UserRef.fromJson(Map<String, dynamic> j) => UserRef(
-        id: (j['id'] ?? j['user_id'] ?? '').toString(),
-        username: (j['username'] ?? 'user').toString(),
-        badge: BadgeLevel.from(j['badge_level']),
-        avatarUrl: j['avatar_url'] as String?,
+  factory FeedUser.fromJson(Map<String, dynamic> j) => FeedUser(
+    userId: (j['user_id'] ?? '').toString(),
+    username: (j['username'] ?? '').toString(),
+    badgeLevel: BadgeLevel.from(j['badge_level']),
+    isFriend: j['is_friend'] == true,
+  );
+}
+
+class FeedPlace {
+  final String placeId;
+  final String name;
+  final String category;
+  final bool isFollowed;
+
+  const FeedPlace({
+    required this.placeId,
+    required this.name,
+    required this.category,
+    required this.isFollowed,
+  });
+
+  factory FeedPlace.fromJson(Map<String, dynamic> j) => FeedPlace(
+    placeId: (j['place_id'] ?? '').toString(),
+    name: (j['name'] ?? '').toString(),
+    category: (j['category'] ?? '').toString(),
+    isFollowed: j['is_followed'] == true,
+  );
+}
+
+// ─── CheckInEvent (feed item) ────────────────────────────────────────────────
+class CheckInEvent {
+  final String checkinId;
+  final FeedUser user;
+  final FeedPlace place;
+  final String? photoUrl;
+  final bool photoIsPermanent;
+  final DateTime checkedInAt;
+  final int? priorityLayer;
+
+  const CheckInEvent({
+    required this.checkinId,
+    required this.user,
+    required this.place,
+    this.photoUrl,
+    required this.photoIsPermanent,
+    required this.checkedInAt,
+    this.priorityLayer,
+  });
+
+  factory CheckInEvent.fromJson(Map<String, dynamic> j) => CheckInEvent(
+    checkinId: (j['checkin_id'] ?? j['event_id'] ?? '').toString(),
+    user: FeedUser.fromJson(
+      (j['user'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    place: FeedPlace.fromJson(
+      (j['place'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    photoUrl: j['photo_url'] as String?,
+    photoIsPermanent: j['photo_is_permanent'] == true,
+    checkedInAt: _parseDate(j['checked_in_at'] ?? j['timestamp']),
+    priorityLayer: (j['priority_layer'] as num?)?.toInt(),
+  );
+}
+
+// ─── PointsBreakdown (confirm response) ──────────────────────────────────────
+class PointsBreakdown {
+  final int base;
+  final double multiplier;
+  final int subtotalCheckin;
+  final int weeklyBonus;
+  final int planBonus;
+  final int total;
+
+  const PointsBreakdown({
+    required this.base,
+    required this.multiplier,
+    required this.subtotalCheckin,
+    required this.weeklyBonus,
+    required this.planBonus,
+    required this.total,
+  });
+
+  factory PointsBreakdown.fromJson(Map<String, dynamic> j) => PointsBreakdown(
+    base: _parseInt(j['base']),
+    multiplier: (j['multiplier'] as num?)?.toDouble() ?? 1.0,
+    subtotalCheckin: _parseInt(j['subtotal_checkin']),
+    weeklyBonus: _parseInt(j['weekly_bonus']),
+    planBonus: _parseInt(j['plan_bonus']),
+    total: _parseInt(j['total']),
+  );
+}
+
+// ─── StreakStatus (confirm response) ─────────────────────────────────────────
+class StreakStatus {
+  final int weeksCurrent;
+  final int weekCheckins;
+  final double multiplier;
+
+  const StreakStatus({
+    required this.weeksCurrent,
+    required this.weekCheckins,
+    required this.multiplier,
+  });
+
+  factory StreakStatus.fromJson(Map<String, dynamic> j) => StreakStatus(
+    weeksCurrent: _parseInt(j['weeks_current']),
+    weekCheckins: _parseInt(j['week_checkins']),
+    multiplier: (j['multiplier'] as num?)?.toDouble() ?? 1.0,
+  );
+}
+
+// ─── CheckInResult (the `checkin` object in confirm response) ────────────────
+class CheckInResult {
+  final String checkinId;
+  final String userId;
+  final String placeId;
+  final String? photoUrl;
+  final DateTime? photoExpiresAt;
+  final bool photoIsPermanent;
+  final bool gpsValid;
+  final bool validationPassed;
+  final int pointsAwarded;
+  final bool isFirstOfDay;
+  final DateTime checkedInAt;
+
+  const CheckInResult({
+    required this.checkinId,
+    required this.userId,
+    required this.placeId,
+    this.photoUrl,
+    this.photoExpiresAt,
+    required this.photoIsPermanent,
+    required this.gpsValid,
+    required this.validationPassed,
+    required this.pointsAwarded,
+    required this.isFirstOfDay,
+    required this.checkedInAt,
+  });
+
+  factory CheckInResult.fromJson(Map<String, dynamic> j) => CheckInResult(
+    checkinId: (j['checkin_id'] ?? '').toString(),
+    userId: (j['user_id'] ?? '').toString(),
+    placeId: (j['place_id'] ?? '').toString(),
+    photoUrl: j['photo_url'] as String?,
+    photoExpiresAt: _parseDateOrNull(j['photo_expires_at']),
+    photoIsPermanent: j['photo_is_permanent'] == true,
+    gpsValid: j['gps_valid'] == true,
+    validationPassed: j['validation_passed'] == true,
+    pointsAwarded: _parseInt(j['points_awarded']),
+    isFirstOfDay: j['is_first_of_day'] == true,
+    checkedInAt: _parseDate(j['checked_in_at']),
+  );
+}
+
+// ─── ConfirmCheckInResult (full POST confirm response) ───────────────────────
+class ConfirmCheckInResult {
+  final CheckInResult checkin;
+  final PointsBreakdown pointsBreakdown;
+  final StreakStatus streak;
+  final bool isFirstOfDay;
+  final String? photoViewUrl;
+
+  const ConfirmCheckInResult({
+    required this.checkin,
+    required this.pointsBreakdown,
+    required this.streak,
+    required this.isFirstOfDay,
+    this.photoViewUrl,
+  });
+
+  factory ConfirmCheckInResult.fromJson(Map<String, dynamic> j) =>
+      ConfirmCheckInResult(
+        checkin: CheckInResult.fromJson(
+          (j['checkin'] as Map?)?.cast<String, dynamic>() ?? const {},
+        ),
+        pointsBreakdown: PointsBreakdown.fromJson(
+          (j['points_breakdown'] as Map?)?.cast<String, dynamic>() ?? const {},
+        ),
+        streak: StreakStatus.fromJson(
+          (j['streak'] as Map?)?.cast<String, dynamic>() ?? const {},
+        ),
+        isFirstOfDay: j['is_first_of_day'] == true,
+        photoViewUrl: j['photo_view_url'] as String?,
       );
 }
 
-// ─── Feed event (GET /api/feed) ───────────────────────────────────────────────
-enum FeedType { checkin, challengeCompleted, unknown }
+// ─── CheckInInitiation (POST .../checkin/initiate response) ──────────────────
+class CheckInInitiation {
+  final String checkinNonce;
+  final String photoKey;
+  final String uploadUrl;
 
-class FeedEvent {
-  final FeedType type;
-  final DateTime createdAt;
-  final UserRef? user; // checkin actor
-  final UserRef? creator; // challenge creator
-  final UserRef? target; // challenge target
-  final Place? place;
-  final String? photoUrl;
-
-  const FeedEvent({
-    required this.type,
-    required this.createdAt,
-    this.user,
-    this.creator,
-    this.target,
-    this.place,
-    this.photoUrl,
+  const CheckInInitiation({
+    required this.checkinNonce,
+    required this.photoKey,
+    required this.uploadUrl,
   });
 
-  factory FeedEvent.fromJson(Map<String, dynamic> j) {
-    final t = (j['type'] as String?) ?? '';
-    return FeedEvent(
-      type: switch (t) {
-        'checkin' => FeedType.checkin,
-        'challenge_completed' => FeedType.challengeCompleted,
-        _ => FeedType.unknown,
-      },
-      createdAt:
-          DateTime.tryParse(j['created_at']?.toString() ?? '') ?? DateTime.now(),
-      user: j['user'] is Map ? UserRef.fromJson(j['user']) : null,
-      creator: j['creator'] is Map ? UserRef.fromJson(j['creator']) : null,
-      target: j['target'] is Map ? UserRef.fromJson(j['target']) : null,
-      place: j['place'] is Map ? Place.fromJson(j['place']) : null,
-      photoUrl: j['photo_url'] as String?,
-    );
+  factory CheckInInitiation.fromJson(Map<String, dynamic> j) =>
+      CheckInInitiation(
+        checkinNonce: (j['checkin_nonce'] ?? '').toString(),
+        photoKey: (j['photo_key'] ?? '').toString(),
+        uploadUrl: (j['upload_url'] ?? '').toString(),
+      );
+}
+
+// ─── Plans ────────────────────────────────────────────────────────────────────
+class PlanUser {
+  final String userId;
+  final String username;
+  final BadgeLevel badgeLevel;
+
+  const PlanUser({
+    required this.userId,
+    required this.username,
+    required this.badgeLevel,
+  });
+
+  factory PlanUser.fromJson(Map<String, dynamic> j) => PlanUser(
+    userId: (j['user_id'] ?? '').toString(),
+    username: (j['username'] ?? '').toString(),
+    badgeLevel: BadgeLevel.from(j['badge_level']),
+  );
+}
+
+class PlanPlace {
+  final String placeId;
+  final String name;
+  final String category;
+
+  const PlanPlace({
+    required this.placeId,
+    required this.name,
+    required this.category,
+  });
+
+  factory PlanPlace.fromJson(Map<String, dynamic> j) => PlanPlace(
+    placeId: (j['place_id'] ?? '').toString(),
+    name: (j['name'] ?? '').toString(),
+    category: (j['category'] ?? '').toString(),
+  );
+}
+
+class Plan {
+  final String planId;
+  final PlanStatus status;
+  final String message;
+  final int deadlineHours;
+  final DateTime createdAt;
+  final DateTime deadlineAt;
+  final DateTime? concretadoAt;
+  final PlanUser creator;
+  final PlanUser target;
+  final PlanPlace place;
+  final String role;
+
+  const Plan({
+    required this.planId,
+    required this.status,
+    required this.message,
+    required this.deadlineHours,
+    required this.createdAt,
+    required this.deadlineAt,
+    this.concretadoAt,
+    required this.creator,
+    required this.target,
+    required this.place,
+    required this.role,
+  });
+
+  factory Plan.fromJson(Map<String, dynamic> j) => Plan(
+    planId: (j['plan_id'] ?? '').toString(),
+    status: PlanStatus.from(j['status']),
+    message: (j['message'] ?? '').toString(),
+    deadlineHours: _parseInt(j['deadline_hours']),
+    createdAt: _parseDate(j['created_at']),
+    deadlineAt: _parseDate(j['deadline_at']),
+    concretadoAt: _parseDateOrNull(j['concretado_at']),
+    creator: PlanUser.fromJson(
+      (j['creator'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    target: PlanUser.fromJson(
+      (j['target'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    place: PlanPlace.fromJson(
+      (j['place'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    role: (j['role'] ?? '').toString(),
+  );
+
+  Duration get timeLeft {
+    final diff = deadlineAt.difference(DateTime.now());
+    return diff.isNegative ? Duration.zero : diff;
   }
 }
 
-// ─── Ranking entry ────────────────────────────────────────────────────────────
+// ─── Rankings ────────────────────────────────────────────────────────────────
 class RankingEntry {
-  final int rank;
-  final UserRef user;
+  final String userId;
+  final String username;
+  final BadgeLevel badgeLevel;
   final int pointsTotal;
-  final bool isMe;
+  final int streakWeeksCurrent;
+  final int rank;
 
   const RankingEntry({
-    required this.rank,
-    required this.user,
+    required this.userId,
+    required this.username,
+    required this.badgeLevel,
     required this.pointsTotal,
-    this.isMe = false,
+    required this.streakWeeksCurrent,
+    required this.rank,
   });
 
-  factory RankingEntry.fromJson(Map<String, dynamic> j, {String? meId}) {
-    final user = UserRef.fromJson(j);
-    return RankingEntry(
-      rank: (j['rank'] as num?)?.toInt() ?? 0,
-      user: user,
-      pointsTotal: (j['points_total'] as num?)?.toInt() ?? 0,
-      isMe: meId != null && user.id == meId,
-    );
-  }
+  factory RankingEntry.fromJson(Map<String, dynamic> j) => RankingEntry(
+    userId: (j['user_id'] ?? '').toString(),
+    username: (j['username'] ?? '').toString(),
+    badgeLevel: BadgeLevel.from(j['badge_level']),
+    pointsTotal: _parseInt(j['points_total']),
+    streakWeeksCurrent: _parseInt(j['streak_weeks_current']),
+    rank: _parseInt(j['rank']),
+  );
+}
+
+class RankingResponse {
+  final List<RankingEntry> entries;
+  final int? userRank;
+  final String? userRankReason;
+
+  const RankingResponse({
+    required this.entries,
+    this.userRank,
+    this.userRankReason,
+  });
+
+  factory RankingResponse.fromJson(Map<String, dynamic> j) => RankingResponse(
+    entries: ((j['entries'] ?? j['rankings']) as List? ?? const [])
+        .map((e) => RankingEntry.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    userRank: (j['user_rank'] as num?)?.toInt(),
+    userRankReason: j['user_rank_reason'] as String?,
+  );
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
+class Report {
+  final String reportId;
+  final String status;
+
+  const Report({required this.reportId, required this.status});
+
+  factory Report.fromJson(Map<String, dynamic> j) => Report(
+    reportId: (j['report_id'] ?? '').toString(),
+    status: (j['status'] ?? '').toString(),
+  );
+}
+
+class CreateReportRequest {
+  final String targetType;
+  final String targetId;
+  final String reason;
+  final String? comment;
+
+  const CreateReportRequest({
+    required this.targetType,
+    required this.targetId,
+    required this.reason,
+    this.comment,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'target_type': targetType,
+    'target_id': targetId,
+    'reason': reason,
+    if (comment != null) 'comment': comment,
+  };
 }
 
 // ─── Friend request ───────────────────────────────────────────────────────────
 class FriendRequest {
-  final UserRef user;
+  final FeedUser user;
   final DateTime? createdAt;
 
   const FriendRequest({required this.user, this.createdAt});
 
   factory FriendRequest.fromJson(Map<String, dynamic> j) => FriendRequest(
-        user: UserRef.fromJson(j['user'] is Map ? j['user'] : j),
-        createdAt: DateTime.tryParse(j['created_at']?.toString() ?? ''),
-      );
+    user: FeedUser.fromJson(((j['user'] as Map?) ?? j).cast<String, dynamic>()),
+    createdAt: _parseDateOrNull(j['created_at']),
+  );
 }
 
-// ─── Challenge ────────────────────────────────────────────────────────────────
-enum ChallengeStatus { pending, accepted, completed, failed, unknown }
-
-class Challenge {
-  final String id;
-  final ChallengeStatus status;
-  final String role; // "creator" | "target"
-  final UserRef? creator;
-  final UserRef? target;
-  final Place? place;
-  final DateTime? deadlineAt;
-  final int? pointsCreator;
-  final int? pointsTarget;
-
-  const Challenge({
-    required this.id,
-    required this.status,
-    required this.role,
-    this.creator,
-    this.target,
-    this.place,
-    this.deadlineAt,
-    this.pointsCreator,
-    this.pointsTarget,
-  });
-
-  factory Challenge.fromJson(Map<String, dynamic> j) => Challenge(
-        id: (j['id'] ?? '').toString(),
-        status: switch ((j['status'] as String?)?.toUpperCase()) {
-          'PENDING' => ChallengeStatus.pending,
-          'ACCEPTED' => ChallengeStatus.accepted,
-          'COMPLETED' => ChallengeStatus.completed,
-          'FAILED' => ChallengeStatus.failed,
-          _ => ChallengeStatus.unknown,
-        },
-        role: (j['role'] ?? 'target').toString(),
-        creator: j['creator'] is Map ? UserRef.fromJson(j['creator']) : null,
-        target: j['target'] is Map ? UserRef.fromJson(j['target']) : null,
-        place: j['place'] is Map ? Place.fromJson(j['place']) : null,
-        deadlineAt: DateTime.tryParse(j['deadline_at']?.toString() ?? ''),
-        pointsCreator: (j['points_creator'] as num?)?.toInt(),
-        pointsTarget: (j['points_target'] as num?)?.toInt(),
-      );
-
-  Duration? get timeLeft {
-    final d = deadlineAt;
-    if (d == null) return null;
-    final diff = d.difference(DateTime.now());
-    return diff.isNegative ? Duration.zero : diff;
-  }
-}
-
-// ─── Check-in history item (GET /api/me/check-ins) ────────────────────────────
-class CheckIn {
-  final String id;
-  final String placeName;
-  final String? photoUrl;
-  final int pointsAwarded;
-  final DateTime createdAt;
-
-  const CheckIn({
-    required this.id,
-    required this.placeName,
-    this.photoUrl,
-    required this.pointsAwarded,
-    required this.createdAt,
-  });
-
-  factory CheckIn.fromJson(Map<String, dynamic> j) => CheckIn(
-        id: (j['id'] ?? '').toString(),
-        placeName: (j['place']?['name'] ?? j['place_name'] ?? 'A place').toString(),
-        photoUrl: j['photo_url'] as String?,
-        pointsAwarded: (j['points_awarded'] as num?)?.toInt() ?? 0,
-        createdAt: DateTime.tryParse(j['created_at']?.toString() ?? '') ??
-            DateTime.now(),
-      );
-}
-
-// ─── Relative time helper ─────────────────────────────────────────────────────
+// ─── Relative time helpers ────────────────────────────────────────────────────
 String timeAgo(DateTime t) {
   final d = DateTime.now().difference(t);
-  if (d.inSeconds < 60) return 'just now';
-  if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-  if (d.inHours < 24) return '${d.inHours}h ago';
-  if (d.inDays < 7) return '${d.inDays}d ago';
-  return '${(d.inDays / 7).floor()}w ago';
+  if (d.inSeconds < 60) return 'justo ahora';
+  if (d.inMinutes < 60) return 'hace ${d.inMinutes} min';
+  if (d.inHours < 24) return 'hace ${d.inHours} h';
+  if (d.inDays < 7) return 'hace ${d.inDays} d';
+  return 'hace ${(d.inDays / 7).floor()} sem';
 }
 
 String countdownLabel(Duration d) {
-  if (d.inSeconds <= 0) return 'expired';
-  if (d.inHours >= 24) return '${d.inDays}d ${d.inHours % 24}h left';
-  if (d.inHours >= 1) return '${d.inHours}h ${d.inMinutes % 60}m left';
-  return '${d.inMinutes}m left';
+  if (d.inSeconds <= 0) return 'expirado';
+  if (d.inHours >= 24) return '${d.inDays}d ${d.inHours % 24}h restantes';
+  if (d.inHours >= 1) return '${d.inHours}h ${d.inMinutes % 60}m restantes';
+  return '${d.inMinutes}m restantes';
 }

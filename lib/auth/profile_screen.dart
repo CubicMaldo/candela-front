@@ -8,20 +8,16 @@ class ProfileScreen extends StatefulWidget {
   final String email;
   final String password;
 
-  const ProfileScreen({
-    required this.email,
-    required this.password,
-    super.key,
-  });
+  const ProfileScreen({required this.email, required this.password, super.key});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _nameCtrl     = TextEditingController();
+  final _nameCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
-  final _nameFocus     = FocusNode();
+  final _nameFocus = FocusNode();
   final _usernameFocus = FocusNode();
 
   DateTime? _birthDate;
@@ -53,7 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: const ColorScheme.light(
-            primary: kRed,
+            primary: candelaAmber,
             onPrimary: Colors.white,
             surface: kBg,
           ),
@@ -201,11 +197,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     height: 34,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: kRed,
-                                      border: Border.all(
-                                        color: kBg,
-                                        width: 3,
-                                      ),
+                                      color: candelaAmber,
+                                      border: Border.all(color: kBg, width: 3),
                                     ),
                                     child: const Icon(
                                       Icons.add_rounded,
@@ -222,7 +215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 26),
 
                       // Full name
-                      LokalField(
+                      CandelaField(
                         label: 'Full name',
                         placeholder: 'Your name',
                         controller: _nameCtrl,
@@ -232,7 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 16),
 
                       // Username
-                      LokalField(
+                      CandelaField(
                         label: 'Username',
                         placeholder: 'yourhandle',
                         controller: _usernameCtrl,
@@ -250,10 +243,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 16),
 
                       // Birth date (date picker trigger)
-                      _DateField(
-                        date: _birthDate,
-                        onTap: _pickBirthDate,
-                      ),
+                      _DateField(date: _birthDate, onTap: _pickBirthDate),
                       const SizedBox(height: 18),
 
                       // Gamification incentive
@@ -277,7 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               const Icon(
                                 Icons.error_outline_rounded,
-                                color: kRed,
+                                color: candelaAmber,
                                 size: 18,
                               ),
                               const SizedBox(width: 8),
@@ -287,7 +277,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   style: jakartaSans(
                                     size: 13.5,
                                     weight: FontWeight.w600,
-                                    color: kRed,
+                                    color: candelaAmber,
                                   ),
                                 ),
                               ),

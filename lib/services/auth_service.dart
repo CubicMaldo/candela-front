@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../config.dart';
+
 class ApiException implements Exception {
   final String message;
   final int statusCode;
@@ -18,7 +20,7 @@ class AuthResult {
 }
 
 class AuthService {
-  static const String _base = 'http://localhost:8080';
+  static const String _base = apiBaseUrl;
 
   static Future<AuthResult> register({
     required String email,
@@ -85,7 +87,8 @@ class AuthService {
       );
     }
 
-    final msg = (body['error'] as String?) ??
+    final msg =
+        (body['error'] as String?) ??
         (res.statusCode == 401
             ? 'Incorrect email or password.'
             : _defaultMessage(res.statusCode));
@@ -94,18 +97,23 @@ class AuthService {
 
   static String _defaultMessage(int status) {
     switch (status) {
-      case 400: return 'Invalid input. Please check your details.';
-      case 409: return 'An account with that email or username already exists.';
-      case 422: return 'Please check your details and try again.';
-      case 429: return 'Too many attempts. Please wait and try again.';
-      default:  return 'Something went wrong. Please try again later.';
+      case 400:
+        return 'Invalid input. Please check your details.';
+      case 409:
+        return 'An account with that email or username already exists.';
+      case 422:
+        return 'Please check your details and try again.';
+      case 429:
+        return 'Too many attempts. Please wait and try again.';
+      default:
+        return 'Something went wrong. Please try again later.';
     }
   }
 }
 
 class TokenStorage {
   static const _storage = FlutterSecureStorage();
-  static const _key = 'lokal_auth_token';
+  static const _key = 'candela_auth_token';
 
   static Future<void> save(String token) =>
       _storage.write(key: _key, value: token);
