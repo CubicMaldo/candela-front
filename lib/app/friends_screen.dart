@@ -129,12 +129,14 @@ class _FriendsScreenState extends State<FriendsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Column(
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
         children: [
           ScreenHeader(
             title: 'Amigos',
+            showBack: true,
             trailing: _IconBtn(
               icon: _searching ? Icons.close_rounded : Icons.search_rounded,
               onTap: () => setState(() {
@@ -200,6 +202,7 @@ class _FriendsScreenState extends State<FriendsScreen>
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -211,11 +214,16 @@ class _FriendsScreenState extends State<FriendsScreen>
       loading: const ListSkeleton(),
       builder: (friends) {
         if (friends.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.group_outlined,
-            title: 'Aún no tienes amigos',
+            title: 'Trae a tu gente',
             message:
                 'Busca personas y envía una solicitud para armar tu círculo.',
+            action: PillButton(
+              label: 'Buscar amigos',
+              icon: Icons.search_rounded,
+              onTap: () => setState(() => _searching = true),
+            ),
           );
         }
         return ListView.separated(

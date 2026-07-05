@@ -5,6 +5,7 @@ import '../models.dart';
 import '../services/api_service.dart';
 import 'widgets.dart';
 import 'checkin_screen.dart';
+import 'photo_viewer.dart';
 
 /// Opens the place detail as a draggable bottom sheet — header info, follow
 /// button, a horizontal strip of recent check-in photos, and (when eligible)
@@ -264,34 +265,88 @@ class _EventStrip extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             itemCount: events.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (_, i) {
-              final url = events[i].photoUrl;
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(radiusMedium),
-                child: SizedBox(
-                  width: 120,
-                  height: 120,
-                  child: url == null
-                      ? const ColoredBox(
-                          color: candelaNight,
-                          child: Icon(
-                            Icons.local_fire_department_rounded,
-                            color: textDarkSecondary,
-                            size: 26,
-                          ),
-                        )
-                      : Image.network(
-                          url,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const ColoredBox(
+            itemBuilder: (context, i) {
+              final event = events[i];
+              final url = event.photoUrl;
+              return GestureDetector(
+                onTap: url == null
+                    ? null
+                    : () => showPhotoViewer(context, event),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(radiusMedium),
+                  child: SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (url == null)
+                          const ColoredBox(
                             color: candelaNight,
                             child: Icon(
                               Icons.local_fire_department_rounded,
                               color: textDarkSecondary,
                               size: 26,
                             ),
+                          )
+                        else
+                          Image.network(
+                            url,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const ColoredBox(
+                              color: candelaNight,
+                              child: Icon(
+                                Icons.local_fire_department_rounded,
+                                color: textDarkSecondary,
+                                size: 26,
+                              ),
+                            ),
+                          ),
+                        // Author overlay — who is there right now.
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(8, 14, 8, 6),
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Colors.transparent, Color(0xB3000000)],
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                if (event.user.isFriend) ...[
+                                  const Icon(
+                                    Icons.favorite_rounded,
+                                    size: 10,
+                                    color: candelaAmber,
+                                  ),
+                                  const SizedBox(width: 3),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    '@${event.user.username}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
                 ),
               );
             },
@@ -324,7 +379,7 @@ class _CheckInCta extends StatelessWidget {
           Navigator.pop(context);
           Navigator.push(
             context,
-            SlideRightRoute(builder: (_) => const CheckInScreen()),
+            SlideRightRoute(builder: (_) => CheckInScreen(initialPlace: place)),
           );
         },
         child: const Text('Hacer check-in aquí'),

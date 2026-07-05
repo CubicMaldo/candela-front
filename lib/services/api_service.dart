@@ -58,8 +58,8 @@ class ApiService {
     final msg =
         (body?['error'] as String?) ??
         (res.statusCode == 401
-            ? 'Incorrect email or password.'
-            : 'Something went wrong. Please try again later.');
+            ? 'Correo o contraseña incorrectos.'
+            : 'Algo salió mal. Inténtalo de nuevo en un momento.');
     throw ApiException(message: msg, statusCode: res.statusCode);
   }
 
@@ -146,8 +146,29 @@ class ApiService {
     return AuthResult(token: m['token'] as String, user: _asMap(m['user']));
   }
 
-  static Future<AuthResult> loginWithGoogle({required String idToken}) async {
+  static Future<GoogleAuthOutcome> loginWithGoogle({
+    required String idToken,
+  }) async {
     final j = await _post('/api/auth/google', {'id_token': idToken}, false);
+    final m = _asMap(j);
+    if (m['needs_registration'] == true) {
+      return GoogleAuthOutcome.needsRegistration((m['email'] ?? '').toString());
+    }
+    return GoogleAuthOutcome.authenticated(
+      AuthResult(token: m['token'] as String, user: _asMap(m['user'])),
+    );
+  }
+
+  static Future<AuthResult> registerWithGoogle({
+    required String idToken,
+    required String username,
+    required String birthDate, // YYYY-MM-DD
+  }) async {
+    final j = await _post('/api/auth/google/register', {
+      'id_token': idToken,
+      'username': username,
+      'birth_date': birthDate,
+    }, false);
     final m = _asMap(j);
     return AuthResult(token: m['token'] as String, user: _asMap(m['user']));
   }
@@ -223,6 +244,19 @@ class ApiService {
     return _asMap(j)['photo_is_permanent'] == true;
   }
 
+  static Future<List<MyCheckIn>> getMyCheckIns({
+    int limit = 20,
+    String? cursor,
+  }) async {
+    var path = '/api/me/check-ins?limit=$limit';
+    if (cursor != null) path += '&before=$cursor';
+    final j = await _get(path);
+    final m = _asMap(j);
+    return (m['check_ins'] as List? ?? const [])
+        .map((e) => MyCheckIn.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   // ── Feed ───────────────────────────────────────────────────────────────────
   static Future<List<CheckInEvent>> getFeed({
     String? cursor,
@@ -284,19 +318,41 @@ class ApiService {
   }
 
   // ── Plans ──────────────────────────────────────────────────────────────────
+  /// Proposes a plan. [targetUserId] is required only for
+  /// [PlanVisibility.invite]; open (public/friends) plans leave it null.
   static Future<Plan> createPlan({
-    required String targetUserId,
+    String? targetUserId,
     required String placeId,
     required String message,
     required int deadlineHours,
+    PlanVisibility visibility = PlanVisibility.invite,
   }) async {
     final j = await _post('/api/plans', {
-      'target_user_id': targetUserId,
+      'target_user_id': ?targetUserId,
       'place_id': placeId,
       'message': message,
       'deadline_hours': deadlineHours,
+      'visibility': visibility.raw,
     });
     return Plan.fromJson(_asMap(j));
+  }
+
+  /// Joins an open plan as a participant.
+  static Future<Plan> joinPlan(String planId) async {
+    final j = await _post('/api/plans/$planId/join');
+    return Plan.fromJson(_asMap(j));
+  }
+
+  /// Open plans near (lat, lon) the user can join — for the map.
+  static Future<List<OpenPlan>> discoverOpenPlans({
+    required double lat,
+    required double lon,
+  }) async {
+    final j = await _get('/api/plans/discover?lat=$lat&lon=$lon');
+    final m = _asMap(j);
+    return (m['plans'] as List? ?? const [])
+        .map((e) => OpenPlan.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<List<Plan>> getIncomingPlans() async {
@@ -325,15 +381,12 @@ class ApiService {
     return Plan.fromJson(_asMap(j));
   }
 
-  static Future<Plan> declinePlan(String planId) async {
-    final j = await _post('/api/plans/$planId/decline');
-    return Plan.fromJson(_asMap(j));
-  }
+  // Both respond 204 No Content — nothing to parse.
+  static Future<void> declinePlan(String planId) =>
+      _post('/api/plans/$planId/decline');
 
-  static Future<Plan> cancelPlan(String planId) async {
-    final j = await _post('/api/plans/$planId/cancel');
-    return Plan.fromJson(_asMap(j));
-  }
+  static Future<void> cancelPlan(String planId) =>
+      _delete('/api/plans/$planId');
 
   // ── Friends ────────────────────────────────────────────────────────────────
   static Future<void> sendFriendRequest(String userId) =>

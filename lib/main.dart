@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'theme.dart';
 import 'services/auth_service.dart';
 import 'services/api_service.dart';
+import 'services/theme_storage.dart';
 import 'auth/welcome_screen.dart';
 import 'app/home_shell.dart';
 
@@ -16,14 +17,15 @@ final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 /// User-forceable dark/light/system override, set from the Settings screen.
 final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.system);
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Icon brightness is applied per-theme in CandelaApp's builder.
   SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ),
+    const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
   );
+  // Restore the user's saved light/dark/system choice before the first frame
+  // so the app opens in the right theme without a flash.
+  themeModeNotifier.value = await ThemeStorage.load();
   // Let the API layer trigger an automatic logout — without holding a
   // BuildContext — whenever it sees a 401 or finds the account is gone.
   ApiService.onSessionExpired = () => handleSessionExpired();
@@ -81,6 +83,21 @@ class CandelaApp extends StatelessWidget {
         theme: CandleTheme.light(),
         darkTheme: CandleTheme.dark(),
         themeMode: mode,
+        // Status-bar icons must flip with the theme: dark icons over Sand,
+        // light icons over Night — otherwise they vanish in dark mode.
+        builder: (context, child) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: isDark
+                  ? Brightness.light
+                  : Brightness.dark,
+              statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+            ),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         home: const _Root(),
       ),
     );

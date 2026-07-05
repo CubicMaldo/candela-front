@@ -60,6 +60,28 @@ enum PlanStatus {
   }
 }
 
+/// Who can see and join a plan.
+///   public  — anyone can discover and join (no invitee).
+///   friends — only the creator's friends can discover and join (no invitee).
+///   invite  — a single friend is invited directly (the classic 1:1 flow).
+enum PlanVisibility {
+  public('PUBLIC'),
+  friends('FRIENDS'),
+  invite('INVITE');
+
+  final String raw;
+  const PlanVisibility(this.raw);
+
+  static PlanVisibility from(Object? value) {
+    if (value is String) {
+      for (final v in PlanVisibility.values) {
+        if (v.raw == value.toUpperCase()) return v;
+      }
+    }
+    return PlanVisibility.invite;
+  }
+}
+
 DateTime _parseDate(Object? v) =>
     DateTime.tryParse(v?.toString() ?? '') ??
     DateTime.fromMillisecondsSinceEpoch(0);
@@ -305,6 +327,36 @@ class CheckInEvent {
   );
 }
 
+// ─── MyCheckIn (own history — GET /api/me/check-ins) ─────────────────────────
+class MyCheckIn {
+  final String checkinId;
+  final FeedPlace place;
+  final String? photoUrl;
+  final bool photoIsPermanent;
+  final int pointsAwarded;
+  final DateTime checkedInAt;
+
+  const MyCheckIn({
+    required this.checkinId,
+    required this.place,
+    this.photoUrl,
+    required this.photoIsPermanent,
+    required this.pointsAwarded,
+    required this.checkedInAt,
+  });
+
+  factory MyCheckIn.fromJson(Map<String, dynamic> j) => MyCheckIn(
+    checkinId: (j['checkin_id'] ?? '').toString(),
+    place: FeedPlace.fromJson(
+      (j['place'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    photoUrl: j['photo_url'] as String?,
+    photoIsPermanent: j['photo_is_permanent'] == true,
+    pointsAwarded: _parseInt(j['points_awarded']),
+    checkedInAt: _parseDate(j['checked_in_at']),
+  );
+}
+
 // ─── PointsBreakdown (confirm response) ──────────────────────────────────────
 class PointsBreakdown {
   final int base;
@@ -487,49 +539,127 @@ class PlanPlace {
 class Plan {
   final String planId;
   final PlanStatus status;
+  final PlanVisibility visibility;
   final String message;
   final int deadlineHours;
   final DateTime createdAt;
   final DateTime deadlineAt;
   final DateTime? concretadoAt;
   final PlanUser creator;
-  final PlanUser target;
+
+  /// The invited friend — null for open (public/friends) plans, which have no
+  /// single invitee.
+  final PlanUser? target;
   final PlanPlace place;
   final String role;
+
+  /// Number of people going (joined + completed participants), including the
+  /// creator.
+  final int participantCount;
+
+  /// The viewer's own participation status ('INVITED'/'JOINED'/…), if any.
+  final String myStatus;
 
   const Plan({
     required this.planId,
     required this.status,
+    required this.visibility,
     required this.message,
     required this.deadlineHours,
     required this.createdAt,
     required this.deadlineAt,
     this.concretadoAt,
     required this.creator,
-    required this.target,
+    this.target,
     required this.place,
     required this.role,
+    required this.participantCount,
+    required this.myStatus,
   });
 
-  factory Plan.fromJson(Map<String, dynamic> j) => Plan(
-    planId: (j['plan_id'] ?? '').toString(),
-    status: PlanStatus.from(j['status']),
-    message: (j['message'] ?? '').toString(),
-    deadlineHours: _parseInt(j['deadline_hours']),
-    createdAt: _parseDate(j['created_at']),
-    deadlineAt: _parseDate(j['deadline_at']),
-    concretadoAt: _parseDateOrNull(j['concretado_at']),
-    creator: PlanUser.fromJson(
-      (j['creator'] as Map?)?.cast<String, dynamic>() ?? const {},
-    ),
-    target: PlanUser.fromJson(
-      (j['target'] as Map?)?.cast<String, dynamic>() ?? const {},
-    ),
-    place: PlanPlace.fromJson(
-      (j['place'] as Map?)?.cast<String, dynamic>() ?? const {},
-    ),
-    role: (j['role'] ?? '').toString(),
-  );
+  bool get isOpen => visibility != PlanVisibility.invite;
+
+  factory Plan.fromJson(Map<String, dynamic> j) {
+    final targetJson = (j['target'] as Map?)?.cast<String, dynamic>();
+    return Plan(
+      planId: (j['plan_id'] ?? '').toString(),
+      status: PlanStatus.from(j['status']),
+      visibility: PlanVisibility.from(j['visibility']),
+      message: (j['message'] ?? '').toString(),
+      deadlineHours: _parseInt(j['deadline_hours']),
+      createdAt: _parseDate(j['created_at']),
+      deadlineAt: _parseDate(j['deadline_at']),
+      concretadoAt: _parseDateOrNull(j['concretado_at']),
+      creator: PlanUser.fromJson(
+        (j['creator'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      target: targetJson == null ? null : PlanUser.fromJson(targetJson),
+      place: PlanPlace.fromJson(
+        (j['place'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      role: (j['role'] ?? '').toString(),
+      participantCount: _parseInt(j['participant_count']),
+      myStatus: (j['my_status'] ?? '').toString(),
+    );
+  }
+
+  Duration get timeLeft {
+    final diff = deadlineAt.difference(DateTime.now());
+    return diff.isNegative ? Duration.zero : diff;
+  }
+}
+
+// ─── Open plan (map discovery — GET /api/plans/discover) ─────────────────────
+/// An open plan the viewer can join, positioned on the map by its place
+/// coordinates.
+class OpenPlan {
+  final String planId;
+  final PlanVisibility visibility;
+  final String message;
+  final int deadlineHours;
+  final DateTime deadlineAt;
+  final PlanUser creator;
+  final String placeId;
+  final String placeName;
+  final String placeCategory;
+  final double lat;
+  final double lon;
+  final int participantCount;
+
+  const OpenPlan({
+    required this.planId,
+    required this.visibility,
+    required this.message,
+    required this.deadlineHours,
+    required this.deadlineAt,
+    required this.creator,
+    required this.placeId,
+    required this.placeName,
+    required this.placeCategory,
+    required this.lat,
+    required this.lon,
+    required this.participantCount,
+  });
+
+  factory OpenPlan.fromJson(Map<String, dynamic> j) {
+    final place = (j['place'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return OpenPlan(
+      planId: (j['plan_id'] ?? '').toString(),
+      visibility: PlanVisibility.from(j['visibility']),
+      message: (j['message'] ?? '').toString(),
+      deadlineHours: _parseInt(j['deadline_hours']),
+      deadlineAt: _parseDate(j['deadline_at']),
+      creator: PlanUser.fromJson(
+        (j['creator'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      placeId: (place['place_id'] ?? '').toString(),
+      placeName: (place['name'] ?? '').toString(),
+      placeCategory: (place['category'] ?? '').toString(),
+      lat: (place['lat'] as num?)?.toDouble() ?? 0,
+      lon: (place['lon'] as num?)?.toDouble() ?? 0,
+      participantCount: _parseInt(j['participant_count']),
+    );
+  }
 
   Duration get timeLeft {
     final diff = deadlineAt.difference(DateTime.now());

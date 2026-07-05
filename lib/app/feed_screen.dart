@@ -3,6 +3,7 @@ import '../theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
 import 'widgets.dart';
+import 'photo_viewer.dart';
 import 'place_sheet.dart';
 
 /// The "city scroll" — a near-seamless vertical feed of recent check-in photos
@@ -149,7 +150,17 @@ class _FeedScreenState extends State<FeedScreen> {
                   ),
                 );
               }
-              return _FeedCard(_events[i]);
+              final event = _events[i];
+              final layer = event.priorityLayer;
+              final previousLayer = i > 0 ? _events[i - 1].priorityLayer : null;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (layer != null && layer != previousLayer)
+                    _LayerHeader(layer),
+                  _FeedCard(event),
+                ],
+              );
             },
           ),
         );
@@ -190,25 +201,71 @@ class _EmptyFeed extends StatelessWidget {
   }
 }
 
+// ─── Layer header ─────────────────────────────────────────────────────────────
+/// Subtle separator between the feed's priority layers (spec §9.3): friends,
+/// followed places, then the rest of the city.
+class _LayerHeader extends StatelessWidget {
+  final int layer;
+  const _LayerHeader(this.layer);
+
+  static const _labels = {
+    1: 'Tu gente',
+    2: 'Lugares que sigues',
+    3: 'La ciudad',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _labels[layer];
+    if (label == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(spacingScreen, 14, spacingScreen, 8),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: textSecondary,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(child: Divider(thickness: 0.5)),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Feed card ────────────────────────────────────────────────────────────────
 class _FeedCard extends StatelessWidget {
   final CheckInEvent event;
   const _FeedCard(this.event);
 
+  Future<void> _openPlace(BuildContext context) async {
+    final place = await ApiService.getPlaceDetail(event.place.placeId);
+    if (context.mounted) showPlaceSheet(context, place);
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     return GestureDetector(
-      onTap: () async {
-        final place = await ApiService.getPlaceDetail(event.place.placeId);
-        if (context.mounted) showPlaceSheet(context, place);
-      },
+      // Photo tap opens the full-screen viewer; the place name below goes to
+      // the event screen (spec §9.2). Cards without a photo go to the place.
+      onTap: () => event.photoUrl != null
+          ? showPhotoViewer(context, event)
+          : _openPlace(context),
       child: AspectRatio(
         aspectRatio: 4 / 3,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            _Photo(photoUrl: event.photoUrl),
+            Hero(
+              tag: 'checkin-photo-${event.checkinId}',
+              child: _Photo(photoUrl: event.photoUrl),
+            ),
             // Bottom gradient: transparent at top 60%, fades to dark at bottom
             const Positioned.fill(
               child: DecoratedBox(
@@ -268,10 +325,13 @@ class _FeedCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          event.place.name,
-                          style: textTheme.bodySmall?.copyWith(
-                            color: candelaAmber,
+                        GestureDetector(
+                          onTap: () => _openPlace(context),
+                          child: Text(
+                            event.place.name,
+                            style: textTheme.bodySmall?.copyWith(
+                              color: candelaAmber,
+                            ),
                           ),
                         ),
                       ],

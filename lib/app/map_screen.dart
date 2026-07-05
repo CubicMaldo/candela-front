@@ -1,5 +1,6 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' as ll;
@@ -7,6 +8,7 @@ import '../config.dart';
 import '../theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart' show ApiException;
 import '../services/location_service.dart';
 import 'widgets.dart';
 import 'place_sheet.dart';
@@ -43,11 +45,49 @@ class _MapScreenState extends State<MapScreen> {
   bool _listView = false;
   late Future<List<CheckInEvent>> _activeFriends;
 
+  // Open plans nearby the user can join, rendered as pins over the map.
+  List<OpenPlan> _openPlans = const [];
+
   @override
   void initState() {
     super.initState();
     _loadLocation(animate: false);
     _activeFriends = _loadActiveFriends();
+  }
+
+  Future<void> _loadOpenPlans(double lat, double lon) async {
+    try {
+      final plans = await ApiService.discoverOpenPlans(lat: lat, lon: lon);
+      if (mounted) setState(() => _openPlans = plans);
+    } catch (_) {
+      // Non-fatal: the map still works without plan pins.
+    }
+  }
+
+  Future<void> _joinOpenPlan(OpenPlan p) async {
+    HapticFeedback.lightImpact();
+    try {
+      await ApiService.joinPlan(p.planId);
+      if (!mounted) return;
+      Navigator.pop(context); // close the sheet
+      showToast(context, 'Te uniste al plan en ${p.placeName}');
+      final c = _referenceCenter;
+      _loadOpenPlans(c.latitude, c.longitude);
+    } on ApiException catch (e) {
+      if (mounted) showToast(context, e.message);
+    }
+  }
+
+  void _showOpenPlansAtPlace(List<OpenPlan> plans) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(radiusCard)),
+      ),
+      builder: (_) => _OpenPlansSheet(plans: plans, onJoin: _joinOpenPlan),
+    );
   }
 
   /// Friends with a live check-in right now, derived from the city feed
@@ -77,6 +117,7 @@ class _MapScreenState extends State<MapScreen> {
           lon: latLng.longitude,
         );
       });
+      _loadOpenPlans(latLng.latitude, latLng.longitude);
       if (animate) _mapController.move(latLng, 15);
     } else {
       setState(() {
@@ -87,6 +128,7 @@ class _MapScreenState extends State<MapScreen> {
           lon: _bquillaCenter.longitude,
         );
       });
+      _loadOpenPlans(_bquillaCenter.latitude, _bquillaCenter.longitude);
     }
   }
 
@@ -102,6 +144,7 @@ class _MapScreenState extends State<MapScreen> {
       _userLatLng = latLng;
       _showLocationBanner = false;
     });
+    _loadOpenPlans(latLng.latitude, latLng.longitude);
     _mapController.move(latLng, 15);
   }
 
@@ -148,25 +191,27 @@ class _MapScreenState extends State<MapScreen> {
                     ? _PlacesListView(
                         places: filtered,
                         reference: _referenceCenter,
-                        onMapTap: () => setState(() => _listView = false),
                       )
                     : _Map(
                         places: filtered,
+                        openPlans: _openPlans,
                         controller: _mapController,
                         userLatLng: _userLatLng,
+                        onTapPlans: _showOpenPlansAtPlace,
                       ),
               ),
-              if (!_listView) ...[
-                Positioned(
-                  top: topInset + 8,
-                  left: 0,
-                  right: 52,
-                  child: _FilterBar(
-                    categories: _categories,
-                    active: _category,
-                    onChanged: (cat) => setState(() => _category = cat),
-                  ),
+              // The category filter applies to both views (spec §7.3/7.5).
+              Positioned(
+                top: topInset + 8,
+                left: 0,
+                right: 0,
+                child: _FilterBar(
+                  categories: _categories,
+                  active: _category,
+                  onChanged: (cat) => setState(() => _category = cat),
                 ),
+              ),
+              if (!_listView) ...[
                 if (_showLocationBanner)
                   Positioned(
                     top: topInset + 60,
@@ -198,9 +243,10 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
               ],
+              // Bottom-left, per spec §7.5.
               Positioned(
-                top: topInset + 8,
-                right: spacingScreen,
+                left: spacingScreen,
+                bottom: spacingScreen + 64,
                 child: _ListToggleButton(
                   active: _listView,
                   onTap: () => setState(() => _listView = !_listView),
@@ -217,17 +263,26 @@ class _MapScreenState extends State<MapScreen> {
 // ─── Map body ─────────────────────────────────────────────────────────────────
 class _Map extends StatelessWidget {
   final List<Place> places;
+  final List<OpenPlan> openPlans;
   final MapController controller;
   final ll.LatLng? userLatLng;
+  final void Function(List<OpenPlan>) onTapPlans;
   const _Map({
     required this.places,
+    required this.openPlans,
     required this.controller,
     required this.userLatLng,
+    required this.onTapPlans,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Group open plans by place so each location shows a single plan pin.
+    final plansByPlace = <String, List<OpenPlan>>{};
+    for (final p in openPlans) {
+      (plansByPlace[p.placeId] ??= []).add(p);
+    }
     // Minimalist Carto basemaps — Positron (light) / Dark Matter (dark) — so the
     // map follows the app theme and keeps the focus on places and events.
     final basemap = isDark ? 'dark_all' : 'light_all';
@@ -267,6 +322,18 @@ class _Map extends StatelessWidget {
                   onTap: place.isActive
                       ? () => showPlaceSheet(context, place)
                       : null,
+                ),
+              ),
+            // Plan pins float above the place point so they don't hide it.
+            for (final group in plansByPlace.values)
+              Marker(
+                point: ll.LatLng(group.first.lat, group.first.lon),
+                width: 72,
+                height: 44,
+                alignment: Alignment.bottomCenter,
+                child: _PlanPin(
+                  count: group.length,
+                  onTap: () => onTapPlans(group),
                 ),
               ),
             if (userLatLng != null)
@@ -470,16 +537,103 @@ class _ActiveFriendsSheet extends StatelessWidget {
   }
 }
 
+// ─── Open plans sheet ─────────────────────────────────────────────────────────
+/// Lists the open plans at a tapped place, each with a "Unirme" action.
+class _OpenPlansSheet extends StatelessWidget {
+  final List<OpenPlan> plans;
+  final ValueChanged<OpenPlan> onJoin;
+  const _OpenPlansSheet({required this.plans, required this.onJoin});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final placeName = plans.isEmpty ? '' : plans.first.placeName;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          spacingScreen,
+          18,
+          spacingScreen,
+          16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Planes en $placeName', style: textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              'Únete a un plan abierto aquí.',
+              style: textTheme.bodySmall?.copyWith(color: textSecondary),
+            ),
+            const SizedBox(height: 14),
+            ...plans.map(
+              (p) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: AppCard(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Con @${p.creator.username}',
+                              style: textTheme.bodyLarge,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${_goingLabel(p.participantCount)} · ${countdownLabel(p.timeLeft)}',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: textSecondary,
+                              ),
+                            ),
+                            if (p.message.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                p.message,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: candelaAmber,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(radiusPill),
+                          ),
+                        ),
+                        onPressed: () => onJoin(p),
+                        child: const Text('Unirme'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _goingLabel(int count) {
+    final n = count < 1 ? 1 : count;
+    return n == 1 ? '1 va' : '$n van';
+  }
+}
+
 // ─── List view ────────────────────────────────────────────────────────────────
 class _PlacesListView extends StatelessWidget {
   final List<Place> places;
   final ll.LatLng reference;
-  final VoidCallback onMapTap;
-  const _PlacesListView({
-    required this.places,
-    required this.reference,
-    required this.onMapTap,
-  });
+  const _PlacesListView({required this.places, required this.reference});
 
   @override
   Widget build(BuildContext context) {
@@ -490,32 +644,15 @@ class _PlacesListView extends StatelessWidget {
       child: Column(
         children: [
           Padding(
+            // Clears the floating filter bar overlaid on both views.
             padding: const EdgeInsets.fromLTRB(
               spacingScreen,
-              8,
+              60,
               spacingScreen,
               0,
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Lugares cercanos', style: textTheme.titleSmall),
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(radiusMedium),
-                    onTap: onMapTap,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Icon(
-                        Icons.map_outlined,
-                        size: 22,
-                        color: textSecondary,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              children: [Text('Lugares cercanos', style: textTheme.titleSmall)],
             ),
           ),
           Expanded(
@@ -576,6 +713,19 @@ class _PlacesListView extends StatelessWidget {
                                         color: textSecondary,
                                       ),
                                     ),
+                                    if (p.isActive &&
+                                        p.activeCheckinsCount > 0) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        p.activeCheckinsCount == 1
+                                            ? '1 persona en candela ahora'
+                                            : '${p.activeCheckinsCount} personas en candela ahora',
+                                        style: textTheme.bodySmall?.copyWith(
+                                          color: candelaAmber,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -686,6 +836,56 @@ class _TeardropPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _TeardropPainter oldDelegate) =>
       oldDelegate.color != color;
+}
+
+// ─── Plan pin ─────────────────────────────────────────────────────────────────
+/// Sage badge marking a place with open plans to join. Tapping opens the list
+/// of plans there. Uses Candela Sage to read as distinct from amber activity.
+class _PlanPin extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+  const _PlanPin({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: candelaSage,
+          borderRadius: BorderRadius.circular(radiusPill),
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.calendar_today_rounded,
+              size: 13,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              count == 1 ? 'Plan' : '$count planes',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ─── Filter chips bar ─────────────────────────────────────────────────────────

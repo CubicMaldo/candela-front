@@ -10,6 +10,18 @@ import 'widgets.dart';
 
 part 'plan_widgets.dart';
 
+/// Opens the "propose a plan" bottom sheet from anywhere in the app (e.g. the
+/// check-in flow, where it's offered as an alternative to marking a place).
+/// Returns true when a plan was created.
+Future<bool?> showProposePlanSheet(BuildContext context, {FeedUser? friend}) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _ProposePlanSheet(friend: friend),
+  );
+}
+
 /// Plans — propose to meet a friend at a place. Replaces the old "Challenges"
 /// concept entirely; the word does not appear anywhere in this surface.
 class PlansScreen extends StatefulWidget {
@@ -49,6 +61,11 @@ class _PlansScreenState extends State<PlansScreen>
     _outgoing = ApiService.getOutgoingPlans();
   }
 
+  Future<void> _refresh() async {
+    setState(_reload);
+    await Future.wait([_incoming, _outgoing]);
+  }
+
   Future<void> _accept(Plan p) async {
     HapticFeedback.lightImpact();
     try {
@@ -86,12 +103,7 @@ class _PlansScreenState extends State<PlansScreen>
   }
 
   Future<void> _openCreate([FeedUser? friend]) async {
-    final created = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _ProposePlanSheet(friend: friend),
-    );
+    final created = await showProposePlanSheet(context, friend: friend);
     if (created == true && mounted) setState(_reload);
   }
 
@@ -127,6 +139,8 @@ class _PlansScreenState extends State<PlansScreen>
                     onAccept: _accept,
                     onDecline: _decline,
                     onCancel: _cancel,
+                    onRefresh: _refresh,
+                    onPropose: _openCreate,
                   ),
                   _PlanList(
                     future: _outgoing,
@@ -134,6 +148,8 @@ class _PlansScreenState extends State<PlansScreen>
                     onAccept: _accept,
                     onDecline: _decline,
                     onCancel: _cancel,
+                    onRefresh: _refresh,
+                    onPropose: _openCreate,
                   ),
                 ],
               ),

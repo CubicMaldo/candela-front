@@ -7,6 +7,8 @@ class _PlanList extends StatelessWidget {
   final ValueChanged<Plan> onAccept;
   final ValueChanged<Plan> onDecline;
   final ValueChanged<Plan> onCancel;
+  final Future<void> Function() onRefresh;
+  final VoidCallback onPropose;
 
   const _PlanList({
     required this.future,
@@ -14,6 +16,8 @@ class _PlanList extends StatelessWidget {
     required this.onAccept,
     required this.onDecline,
     required this.onCancel,
+    required this.onRefresh,
+    required this.onPropose,
   });
 
   @override
@@ -23,31 +27,52 @@ class _PlanList extends StatelessWidget {
       errorTitle: 'No se pudieron cargar los planes',
       loading: const ListSkeleton(),
       builder: (plans) {
-        if (plans.isEmpty) {
-          return EmptyState(
-            icon: Icons.calendar_today_outlined,
-            title: received ? 'Sin planes recibidos' : 'Sin planes enviados',
-            message: received
-                ? 'Cuando alguien te proponga un plan, aparecerá aquí.'
-                : 'Proponle un plan a un amigo para verlo aquí.',
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(
-            spacingScreen,
-            16,
-            spacingScreen,
-            kBottomGap,
-          ),
-          itemCount: plans.length,
-          separatorBuilder: (_, _) => const SizedBox(height: spacingCardGap),
-          itemBuilder: (_, i) => _PlanCard(
-            plan: plans[i],
-            received: received,
-            onAccept: onAccept,
-            onDecline: onDecline,
-            onCancel: onCancel,
-          ),
+        final child = plans.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  const SizedBox(height: 90),
+                  EmptyState(
+                    icon: Icons.calendar_today_outlined,
+                    title: received
+                        ? 'Sin planes recibidos'
+                        : 'Sin planes enviados',
+                    message: received
+                        ? 'Cuando alguien te proponga un plan, aparecerá aquí.'
+                        : 'Proponle un plan a un amigo para verlo aquí.',
+                    action: received
+                        ? null
+                        : PillButton(
+                            label: 'Proponer plan',
+                            icon: Icons.add_rounded,
+                            onTap: onPropose,
+                          ),
+                  ),
+                ],
+              )
+            : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(
+                  spacingScreen,
+                  16,
+                  spacingScreen,
+                  kBottomGap,
+                ),
+                itemCount: plans.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(height: spacingCardGap),
+                itemBuilder: (_, i) => _PlanCard(
+                  plan: plans[i],
+                  received: received,
+                  onAccept: onAccept,
+                  onDecline: onDecline,
+                  onCancel: onCancel,
+                ),
+              );
+        return RefreshIndicator(
+          color: candelaAmber,
+          onRefresh: onRefresh,
+          child: child,
         );
       },
     );
@@ -75,6 +100,11 @@ class _PlanCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final other = received ? plan.creator : plan.target;
     final isPending = plan.status == PlanStatus.pending;
+    // Open plans have no single counterpart: show how many are going instead of
+    // "Con @x". Accept/decline only applies to direct invitations.
+    final subtitle = plan.isOpen
+        ? _peopleGoingLabel(plan.participantCount)
+        : 'Con @${other?.username ?? '—'}';
 
     return AppCard(
       onTap: () => _showDetail(context),
@@ -91,7 +121,7 @@ class _PlanCard extends StatelessWidget {
                     Text(plan.place.name, style: textTheme.titleSmall),
                     const SizedBox(height: 3),
                     Text(
-                      'Con @${other.username}',
+                      subtitle,
                       style: textTheme.bodyMedium?.copyWith(
                         color: textSecondary,
                       ),
@@ -103,7 +133,7 @@ class _PlanCard extends StatelessWidget {
               _StatusPill(status: plan.status),
             ],
           ),
-          if (received && isPending) ...[
+          if (received && isPending && !plan.isOpen) ...[
             const SizedBox(height: 14),
             Row(
               children: [
@@ -152,6 +182,11 @@ class _PlanCard extends StatelessWidget {
     );
   }
 
+  static String _peopleGoingLabel(int count) {
+    final n = count < 1 ? 1 : count;
+    return n == 1 ? 'Plan abierto · 1 va' : 'Plan abierto · $n van';
+  }
+
   void _showDetail(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -174,6 +209,9 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final mutedBg = onSurface.withValues(alpha: 0.08);
+    final mutedFg = onSurface.withValues(alpha: 0.6);
     final (label, bg, fg, outline) = switch (status) {
       PlanStatus.pending => (
         'Pendiente',
@@ -183,8 +221,8 @@ class _StatusPill extends StatelessWidget {
       ),
       PlanStatus.accepted => ('Aceptado', candelaSage, Colors.white, null),
       PlanStatus.completed => ('¡Se armó!', candelaSage, Colors.white, null),
-      PlanStatus.failed => ('No se dio', borderInactive, candelaNight, null),
-      PlanStatus.declined => ('Declinado', borderInactive, candelaNight, null),
+      PlanStatus.failed => ('No se dio', mutedBg, mutedFg, null),
+      PlanStatus.declined => ('Declinado', mutedBg, mutedFg, null),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -206,7 +244,7 @@ class _StatusPill extends StatelessWidget {
 // ─── Plan detail sheet ────────────────────────────────────────────────────────
 class _PlanDetailSheet extends StatelessWidget {
   final Plan plan;
-  final PlanUser other;
+  final PlanUser? other;
   const _PlanDetailSheet({required this.plan, required this.other});
 
   @override
@@ -227,7 +265,9 @@ class _PlanDetailSheet extends StatelessWidget {
             Text(plan.place.name, style: textTheme.titleSmall),
             const SizedBox(height: 6),
             Text(
-              'Con @${other.username}',
+              plan.isOpen
+                  ? _PlanCard._peopleGoingLabel(plan.participantCount)
+                  : 'Con @${other?.username ?? '—'}',
               style: textTheme.bodyMedium?.copyWith(color: textSecondary),
             ),
             const SizedBox(height: 14),
@@ -261,6 +301,7 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
   FeedUser? _friend;
   Place? _place;
   int _hours = 24;
+  PlanVisibility _visibility = PlanVisibility.invite;
   bool _loading = false;
   final _messageCtrl = TextEditingController();
 
@@ -271,6 +312,11 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
   void initState() {
     super.initState();
     _friend = widget.friend;
+    // Opened from a friend (e.g. their profile) → default to a direct invite.
+    // Otherwise default to an open, friends-visible plan.
+    _visibility = widget.friend != null
+        ? PlanVisibility.invite
+        : PlanVisibility.friends;
     _friends = ApiService.getFriends();
     _places = _loadPlaces();
   }
@@ -289,21 +335,30 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
     super.dispose();
   }
 
-  bool get _canSubmit => _friend != null && _place != null && !_loading;
+  bool get _isInvite => _visibility == PlanVisibility.invite;
+
+  bool get _canSubmit =>
+      _place != null && !_loading && (!_isInvite || _friend != null);
 
   Future<void> _submit() async {
     if (!_canSubmit) return;
     setState(() => _loading = true);
     try {
       await ApiService.createPlan(
-        targetUserId: _friend!.userId,
+        targetUserId: _isInvite ? _friend!.userId : null,
         placeId: _place!.placeId,
         message: _messageCtrl.text.trim(),
         deadlineHours: _hours,
+        visibility: _visibility,
       );
       if (!mounted) return;
       Navigator.pop(context, true);
-      showToast(context, 'Plan enviado a @${_friend!.username}');
+      showToast(
+        context,
+        _isInvite
+            ? 'Plan enviado a @${_friend!.username}'
+            : 'Plan publicado. ¡Que se una la gente!',
+      );
     } on ApiException catch (e) {
       setState(() => _loading = false);
       if (mounted) showToast(context, e.message);
@@ -345,15 +400,24 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
             Text('Proponer plan', style: textTheme.titleSmall),
             const SizedBox(height: 18),
 
-            _label(context, 'Con quién'),
+            _label(context, 'Quién puede verlo'),
             const SizedBox(height: 8),
-            FutureBuilder<List<FeedUser>>(
-              future: _friends,
-              builder: (context, snap) {
-                final friends = snap.data ?? const [];
-                return SizedBox(
-                  height: 84,
-                  child: friends.isEmpty
+            _VisibilitySelector(
+              value: _visibility,
+              onChanged: (v) => setState(() => _visibility = v),
+            ),
+            const SizedBox(height: 18),
+
+            if (_isInvite) ...[
+              _label(context, 'Con quién'),
+              const SizedBox(height: 8),
+              FutureBuilder<List<FeedUser>>(
+                future: _friends,
+                builder: (context, snap) {
+                  final friends = snap.data ?? const [];
+                  return SizedBox(
+                    height: 84,
+                    child: friends.isEmpty
                       ? Center(
                           child: Text(
                             'Aún no tienes amigos para proponer un plan',
@@ -428,8 +492,9 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
                         ),
                 );
               },
-            ),
-            const SizedBox(height: 18),
+              ),
+              const SizedBox(height: 18),
+            ],
 
             _label(context, 'Dónde'),
             const SizedBox(height: 8),
@@ -563,4 +628,63 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
       fontWeight: FontWeight.w700,
     ),
   );
+}
+
+// ─── Visibility selector ──────────────────────────────────────────────────────
+/// Three segmented options — Público / Amigos / Con invitación — mirroring the
+/// "Plazo" row's styling. Selecting "Con invitación" reveals the friend picker.
+class _VisibilitySelector extends StatelessWidget {
+  final PlanVisibility value;
+  final ValueChanged<PlanVisibility> onChanged;
+  const _VisibilitySelector({required this.value, required this.onChanged});
+
+  static const _options = [
+    (PlanVisibility.public, 'Público', Icons.public_rounded),
+    (PlanVisibility.friends, 'Amigos', Icons.group_rounded),
+    (PlanVisibility.invite, 'Invitación', Icons.person_add_alt_1_rounded),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      children: _options.map((o) {
+        final (visibility, label, icon) = o;
+        final sel = visibility == value;
+        return Expanded(
+          child: GestureDetector(
+            onTap: () => onChanged(visibility),
+            child: Container(
+              margin: EdgeInsets.only(right: visibility != _options.last.$1 ? 10 : 0),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: sel ? candelaAmber : null,
+                borderRadius: BorderRadius.circular(radiusMedium),
+                border: Border.all(color: sel ? candelaAmber : borderInactive),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    size: 19,
+                    color: sel ? Colors.white : textSecondary,
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    label,
+                    style: textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: sel ? Colors.white : textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
 }

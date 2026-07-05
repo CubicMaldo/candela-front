@@ -291,12 +291,12 @@ class _RankingsSectionState extends State<_RankingsSection> {
 
 // ─── Recent check-ins strip ───────────────────────────────────────────────────
 class _RecentCheckIns extends StatelessWidget {
-  final Future<List<CheckInEvent>> future;
+  final Future<List<MyCheckIn>> future;
   const _RecentCheckIns({required this.future});
 
   @override
   Widget build(BuildContext context) {
-    return AsyncView<List<CheckInEvent>>(
+    return AsyncView<List<MyCheckIn>>(
       future: future,
       errorTitle: 'No se pudo cargar tu historial',
       builder: (events) {

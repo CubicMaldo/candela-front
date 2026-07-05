@@ -209,25 +209,12 @@ class CandleTheme {
   }
 }
 
-// ─── Derived tokens (alpha tints & shorthands) ───────────────────────────────
-// Short aliases and tints derived from the canonical Candela palette above.
-// The plain aliases map straight onto a base colour; the `kSoft*`/`kMuted`/
-// `kBorder`/`kFaint` values are translucent tints used for chips, dividers and
-// faint fills that have no opaque equivalent.
-const kGreen = candelaSage;
-const kBg = candelaSand;
-const kField = Color(0xFFF4F0E9); // light input/field background
-const kText = candelaNight;
-const kMuted = Color(0x806B5E58); // textSecondary @ 50% — disabled/hint text
-const kBorder = Color(0x1C1A1410); // night @ ~11% — hairline borders
-const kFaint = Color(0x121A1410); // night @ ~7% — faint fills
-const kSoftRed = Color(0x1AE8580A); // amber @ ~10% — soft accent fill
-const kSoftGreen = Color(0x1F5C8B6E); // sage @ ~12% — success fill
-
+/// Plus Jakarta Sans shorthand. When [color] is null the style inherits the
+/// ambient DefaultTextStyle colour, so it adapts to light/dark automatically.
 TextStyle jakartaSans({
   double size = 16,
   FontWeight weight = FontWeight.w500,
-  Color color = kText,
+  Color? color,
   double? letterSpacing,
   double? height,
 }) {

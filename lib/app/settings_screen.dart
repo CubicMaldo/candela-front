@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart' show ApiException, TokenStorage;
 import '../auth/welcome_screen.dart';
 import '../main.dart' show themeModeNotifier;
+import '../services/theme_storage.dart';
 import 'widgets.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -24,6 +25,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     PrivacyMode.public: 'Público',
     PrivacyMode.friends: 'Solo amigos',
     PrivacyMode.private: 'Privado',
+  };
+
+  static const _privacyHints = {
+    PrivacyMode.public: 'Cualquier persona puede ver tu perfil completo.',
+    PrivacyMode.friends: 'Solo tus amigos ven tu perfil completo.',
+    PrivacyMode.private: 'Nadie te encuentra si no es tu amigo.',
   };
 
   static const _themeLabels = {
@@ -77,7 +84,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _setThemeMode(ThemeMode mode) => themeModeNotifier.value = mode;
+  void _setThemeMode(ThemeMode mode) {
+    themeModeNotifier.value = mode;
+    ThemeStorage.save(mode);
+  }
 
   Future<void> _confirmLogout() async {
     final confirmed = await showAdaptiveDialog<bool>(
@@ -167,6 +177,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               options: PrivacyMode.values,
               labelOf: (m) => _privacyLabels[m]!,
               onChanged: _setPrivacy,
+            ),
+            const SizedBox(height: 8),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: Text(
+                _privacyHints[_privacy]!,
+                key: ValueKey(_privacy),
+                style: textTheme.labelSmall?.copyWith(color: textSecondary),
+              ),
             ),
 
             const SizedBox(height: 26),

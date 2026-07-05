@@ -20,7 +20,7 @@ class MyProfileScreen extends StatefulWidget {
 
 class _MyProfileScreenState extends State<MyProfileScreen> {
   late Future<User> _profile;
-  late Future<List<CheckInEvent>> _recent;
+  late Future<List<MyCheckIn>> _recent;
   bool _pointsExpanded = false;
 
   @override
@@ -31,12 +31,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
 
   void _load() {
     _profile = ApiService.getMyProfile();
-    // No dedicated "my check-ins" endpoint — derive recent visits from the
-    // city feed, filtered to the current user once the profile resolves.
-    _recent = _profile.then((p) async {
-      final events = await ApiService.getFeed(limit: 40);
-      return events.where((e) => e.user.userId == p.userId).take(5).toList();
-    });
+    _recent = ApiService.getMyCheckIns(limit: 5);
   }
 
   Future<void> _refresh() async {

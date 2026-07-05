@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import 'widgets.dart';
 
-/// Full check-in history for the current user. There is no dedicated
-/// "my check-ins" endpoint, so — like the profile's recent strip — this derives
-/// the list from the city feed filtered to the user.
+/// Full check-in history for the current user, from GET /api/me/check-ins.
+/// While a photo's event is still active it can be pinned as permanent
+/// (PATCH /api/checkins/:id/permanent); once the event closes the API rejects
+/// the change and the decision is final.
 class CheckInHistoryScreen extends StatefulWidget {
   final User profile;
   const CheckInHistoryScreen({required this.profile, super.key});
@@ -16,17 +18,32 @@ class CheckInHistoryScreen extends StatefulWidget {
 }
 
 class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
-  late Future<List<CheckInEvent>> _history;
+  late Future<List<MyCheckIn>> _history;
 
   @override
   void initState() {
     super.initState();
-    _history = _load();
+    _history = ApiService.getMyCheckIns(limit: 50);
   }
 
-  Future<List<CheckInEvent>> _load() async {
-    final events = await ApiService.getFeed(limit: 100);
-    return events.where((e) => e.user.userId == widget.profile.userId).toList();
+  Future<void> _togglePermanent(MyCheckIn checkIn) async {
+    try {
+      final permanent = await ApiService.setPhotoPermanent(
+        checkIn.checkinId,
+        !checkIn.photoIsPermanent,
+      );
+      if (!mounted) return;
+      showToast(
+        context,
+        permanent
+            ? 'Foto guardada en tu historial.'
+            : 'La foto vuelve a ser efímera.',
+      );
+      setState(() => _history = ApiService.getMyCheckIns(limit: 50));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      showToast(context, e.message);
+    }
   }
 
   @override
@@ -38,7 +55,7 @@ class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
           children: [
             const ScreenHeader(title: 'Tu historial', showBack: true),
             Expanded(
-              child: AsyncView<List<CheckInEvent>>(
+              child: AsyncView<List<MyCheckIn>>(
                 future: _history,
                 errorTitle: 'No se pudo cargar tu historial',
                 loading: const ListSkeleton(),
@@ -60,7 +77,10 @@ class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
                     itemCount: events.length,
                     separatorBuilder: (_, _) =>
                         const SizedBox(height: spacingCardGap),
-                    itemBuilder: (_, i) => _HistoryRow(event: events[i]),
+                    itemBuilder: (_, i) => _HistoryRow(
+                      checkIn: events[i],
+                      onTogglePermanent: () => _togglePermanent(events[i]),
+                    ),
                   );
                 },
               ),
@@ -73,26 +93,29 @@ class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
 }
 
 class _HistoryRow extends StatelessWidget {
-  final CheckInEvent event;
-  const _HistoryRow({required this.event});
+  final MyCheckIn checkIn;
+  final VoidCallback onTogglePermanent;
+  const _HistoryRow({required this.checkIn, required this.onTogglePermanent});
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final photoUrl = checkIn.photoUrl;
     return AppCard(
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: candelaAmber.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(radiusMedium),
-            ),
-            child: const Icon(
-              Icons.local_fire_department_rounded,
-              color: candelaAmber,
-              size: 22,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(radiusMedium),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: photoUrl != null
+                  ? Image.network(
+                      photoUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const _FlameTile(),
+                    )
+                  : const _FlameTile(),
             ),
           ),
           const SizedBox(width: 12),
@@ -101,7 +124,7 @@ class _HistoryRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  event.place.name,
+                  checkIn.place.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: textTheme.bodyLarge?.copyWith(
@@ -110,15 +133,43 @@ class _HistoryRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  timeAgo(event.checkedInAt),
+                  '${timeAgo(checkIn.checkedInAt)} · +${checkIn.pointsAwarded} pts',
                   style: textTheme.bodySmall?.copyWith(color: textSecondary),
                 ),
               ],
             ),
           ),
-          if (event.photoIsPermanent)
-            Icon(Icons.push_pin_rounded, size: 16, color: textSecondary),
+          if (photoUrl != null)
+            IconButton(
+              onPressed: onTogglePermanent,
+              tooltip: checkIn.photoIsPermanent
+                  ? 'Quitar de permanentes'
+                  : 'Guardar como permanente',
+              icon: Icon(
+                checkIn.photoIsPermanent
+                    ? Icons.push_pin_rounded
+                    : Icons.push_pin_outlined,
+                size: 18,
+                color: checkIn.photoIsPermanent ? candelaAmber : textSecondary,
+              ),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _FlameTile extends StatelessWidget {
+  const _FlameTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: candelaAmber.withValues(alpha: 0.12),
+      child: const Icon(
+        Icons.local_fire_department_rounded,
+        color: candelaAmber,
+        size: 22,
       ),
     );
   }

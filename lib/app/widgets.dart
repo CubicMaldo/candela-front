@@ -223,7 +223,12 @@ class UserAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: avatarColor(username),
-        border: ring ? Border.all(color: kBg, width: 2.5) : null,
+        border: ring
+            ? Border.all(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                width: 2.5,
+              )
+            : null,
         image: imageUrl != null
             ? DecorationImage(image: NetworkImage(imageUrl!), fit: BoxFit.cover)
             : null,
@@ -298,14 +303,14 @@ class PointsPill extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.bolt_rounded, size: large ? 18 : 15, color: kGreen),
+        Icon(Icons.bolt_rounded, size: large ? 18 : 15, color: candelaSage),
         const SizedBox(width: 2),
         Text(
           '$points',
           style: jakartaSans(
             size: large ? 16 : 14,
             weight: FontWeight.w800,
-            color: kText,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ],
@@ -327,19 +332,26 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final card = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: kBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kBorder, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(radiusCard),
+        border: Border.all(
+          color: scheme.onSurface.withValues(alpha: isDark ? 0.08 : 0.11),
+          width: 1,
+        ),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: child,
     );
@@ -394,7 +406,7 @@ class ScreenHeader extends StatelessWidget {
                   style: jakartaSans(
                     size: 14,
                     weight: FontWeight.w500,
-                    color: kMuted,
+                    color: textSecondary,
                   ),
                 ),
               ],
@@ -428,6 +440,8 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final muted = scheme.onSurface.withValues(alpha: 0.5);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
@@ -437,23 +451,26 @@ class EmptyState extends StatelessWidget {
             Container(
               width: 72,
               height: 72,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: kField),
-              child: Icon(icon, size: 32, color: kMuted),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: scheme.onSurface.withValues(alpha: 0.06),
+              ),
+              child: Icon(icon, size: 32, color: muted),
             ),
             const SizedBox(height: 18),
             Text(
               title,
-              style: jakartaSans(size: 18, weight: FontWeight.w700),
+              style: jakartaSans(
+                size: 18,
+                weight: FontWeight.w700,
+                color: scheme.onSurface,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
               message,
-              style: jakartaSans(
-                size: 14,
-                weight: FontWeight.w500,
-                color: kMuted,
-              ),
+              style: jakartaSans(size: 14, weight: FontWeight.w500, color: muted),
               textAlign: TextAlign.center,
             ),
             if (action != null) ...[const SizedBox(height: 20), action!],
@@ -477,7 +494,7 @@ class AsyncView<T> extends StatelessWidget {
   const AsyncView({
     required this.future,
     required this.builder,
-    this.errorTitle = 'Could not load',
+    this.errorTitle = 'No se pudo cargar',
     this.loading,
     super.key,
   });
@@ -522,6 +539,7 @@ class PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -529,13 +547,18 @@ class PillButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: filled ? color : Colors.transparent,
           borderRadius: BorderRadius.circular(999),
-          border: filled ? null : Border.all(color: kBorder, width: 1.5),
+          border: filled
+              ? null
+              : Border.all(
+                  color: onSurface.withValues(alpha: 0.2),
+                  width: 1.5,
+                ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 16, color: filled ? Colors.white : kText),
+              Icon(icon, size: 16, color: filled ? Colors.white : onSurface),
               const SizedBox(width: 5),
             ],
             Text(
@@ -543,7 +566,7 @@ class PillButton extends StatelessWidget {
               style: jakartaSans(
                 size: 13.5,
                 weight: FontWeight.w700,
-                color: filled ? Colors.white : kText,
+                color: filled ? Colors.white : onSurface,
               ),
             ),
           ],
@@ -565,7 +588,7 @@ void showToast(BuildContext context, String message) {
           color: Colors.white,
         ),
       ),
-      backgroundColor: kText,
+      backgroundColor: surfaceDark,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.all(16),

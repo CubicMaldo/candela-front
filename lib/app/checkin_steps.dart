@@ -1,5 +1,21 @@
 part of 'checkin_screen.dart';
 
+// ─── Preparing placeholder ────────────────────────────────────────────────────
+/// Neutral full-screen loader shown while a picked place's location resolves.
+/// Its black background matches the camera step so the transition into the
+/// camera is seamless and the place list never flashes on the preselected flow.
+class _PreparingStep extends StatelessWidget {
+  const _PreparingStep();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.black,
+      body: CandelaLoader.centered(),
+    );
+  }
+}
+
 // ─── Step 1 — Place selection ─────────────────────────────────────────────────
 class _PlaceSelectStep extends StatefulWidget {
   final ValueChanged<Place> onSelected;
@@ -95,7 +111,70 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: spacingScreen),
+              child: GestureDetector(
+                onTap: () => showProposePlanSheet(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: candelaAmber.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(radiusMedium),
+                    border: Border.all(
+                      color: candelaAmber.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: const BoxDecoration(
+                          color: candelaAmber,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.add_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '¿No estás ahí todavía?',
+                              style: textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Propón un plan para verte con un amigo',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: textSecondary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             Expanded(
               child: AsyncView<List<Place>>(
                 future: _places,
@@ -162,9 +241,13 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      p.category,
+                                      p.isActive && p.activeCheckinsCount > 0
+                                          ? '${p.category} · ${p.activeCheckinsCount} en candela ahora'
+                                          : p.category,
                                       style: textTheme.bodySmall?.copyWith(
-                                        color: textSecondary,
+                                        color: p.isActive
+                                            ? candelaAmber
+                                            : textSecondary,
                                       ),
                                     ),
                                   ],
@@ -635,13 +718,10 @@ class _ConfirmStepState extends State<_ConfirmStep> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    child: PrimaryButton(
-                      label: 'Publicar',
-                      loading: _publishing,
-                      onTap: _publishing ? null : _publish,
-                    ),
+                  CandelaButton(
+                    label: 'Publicar',
+                    loading: _publishing,
+                    onTap: _publishing ? null : _publish,
                   ),
                   const SizedBox(height: 6),
                   Center(

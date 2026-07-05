@@ -47,25 +47,33 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     // extendBody lets the active tab scroll *behind* the frosted nav bar — the
     // iOS hallmark of depth and translucency.
-    return Scaffold(
-      extendBody: true,
-      // A cross-fade is layered over the IndexedStack (which keeps each tab's
-      // state and avoids re-fetching on every switch).
-      body: TweenAnimationBuilder<double>(
-        key: ValueKey(_index),
-        tween: Tween(begin: 0.65, end: 1),
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        builder: (context, opacity, child) =>
-            Opacity(opacity: opacity, child: child),
-        child: IndexedStack(index: _index, children: _tabs),
+    return PopScope(
+      // Android back on a secondary tab returns to the map (the app's home)
+      // instead of closing the app; on the map it exits as usual.
+      canPop: _index == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onTab(0);
+      },
+      child: Scaffold(
+        extendBody: true,
+        // A cross-fade is layered over the IndexedStack (which keeps each tab's
+        // state and avoids re-fetching on every switch).
+        body: TweenAnimationBuilder<double>(
+          key: ValueKey(_index),
+          tween: Tween(begin: 0.65, end: 1),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          builder: (context, opacity, child) =>
+              Opacity(opacity: opacity, child: child),
+          child: IndexedStack(index: _index, children: _tabs),
+        ),
+        // The FAB lives in the Scaffold slot so it paints *above* the frosted bar
+        // (in the body Stack it was hidden behind it). centerDocked raises it onto
+        // the bar's top edge.
+        floatingActionButton: _CheckInFab(onTap: _openCheckIn),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        bottomNavigationBar: _NavBar(index: _index, onChanged: _onTab),
       ),
-      // The FAB lives in the Scaffold slot so it paints *above* the frosted bar
-      // (in the body Stack it was hidden behind it). centerDocked raises it onto
-      // the bar's top edge.
-      floatingActionButton: _CheckInFab(onTap: _openCheckIn),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: _NavBar(index: _index, onChanged: _onTab),
     );
   }
 }
@@ -84,30 +92,34 @@ class _CheckInFabState extends State<_CheckInFab> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? 0.9 : 1.0,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        child: Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: candelaAmber,
-            boxShadow: [
-              BoxShadow(
-                color: candelaAmber.withValues(alpha: 0.35),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
+    return Semantics(
+      button: true,
+      label: 'Hacer check-in',
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _pressed ? 0.9 : 1.0,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: candelaAmber,
+              boxShadow: [
+                BoxShadow(
+                  color: candelaAmber.withValues(alpha: 0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: const Center(child: _FlameIcon(size: 28)),
           ),
-          child: const Center(child: _FlameIcon(size: 28)),
         ),
       ),
     );
@@ -177,6 +189,8 @@ class _NavBar extends StatelessWidget {
     Icons.person_rounded,
   ];
 
+  static const _labels = ['Mapa', 'Feed', 'Planes', 'Perfil'];
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -198,27 +212,50 @@ class _NavBar extends StatelessWidget {
           child: SafeArea(
             top: false,
             child: SizedBox(
-              height: 60,
+              height: 62,
               child: Row(
-                children: List.generate(_outlined.length, (i) {
-                  final active = i == index;
-                  return Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => onChanged(i),
-                      child: Center(
-                        child: Icon(
-                          active ? _filled[i] : _outlined[i],
-                          size: 26,
-                          // Higher-contrast inactive tone than borderInactive.
-                          color: active ? candelaAmber : textSecondary,
-                        ),
-                      ),
-                    ),
-                  );
-                }),
+                children: [
+                  _tab(0),
+                  _tab(1),
+                  // Clearance under the docked check-in FAB so no tab's hit
+                  // area hides beneath it.
+                  const SizedBox(width: 72),
+                  _tab(2),
+                  _tab(3),
+                ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tab(int i) {
+    final active = i == index;
+    final color = active ? candelaAmber : textSecondary;
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: active,
+        label: _labels[i],
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onChanged(i),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(active ? _filled[i] : _outlined[i], size: 24, color: color),
+              const SizedBox(height: 3),
+              Text(
+                _labels[i],
+                style: jakartaSans(
+                  size: 10.5,
+                  weight: active ? FontWeight.w700 : FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
           ),
         ),
       ),

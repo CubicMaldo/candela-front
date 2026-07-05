@@ -3,7 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/google_signin_service.dart';
 import '../app/home_shell.dart';
+import 'google_flow_button.dart';
 import 'widgets.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -143,6 +145,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   onTap: _canSubmit ? _login : null,
                 ),
               ),
+              if (GoogleSignInService.isConfigured) ...[
+                const SizedBox(height: 16),
+                const AuthDivider(),
+                const SizedBox(height: 16),
+                GoogleFlowButton(
+                  onError: (msg) => setState(() => _error = msg),
+                ),
+              ],
             ],
           ),
         ),

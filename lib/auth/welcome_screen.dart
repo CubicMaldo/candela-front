@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
+import '../services/google_signin_service.dart';
 import 'widgets.dart';
+import 'google_flow_button.dart';
 import 'join_screen.dart';
 import 'login_screen.dart';
 
@@ -65,6 +67,18 @@ class WelcomeScreen extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const JoinScreen()),
                 ),
               ),
+              if (GoogleSignInService.isConfigured) ...[
+                const SizedBox(height: 20),
+                const AuthDivider(),
+                const SizedBox(height: 20),
+                Builder(
+                  builder: (ctx) => GoogleFlowButton(
+                    onError: (msg) => ScaffoldMessenger.of(
+                      ctx,
+                    ).showSnackBar(SnackBar(content: Text(msg))),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
