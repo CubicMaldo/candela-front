@@ -52,11 +52,11 @@ class _PlanList extends StatelessWidget {
               )
             : ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
+                padding: EdgeInsets.fromLTRB(
                   spacingScreen,
                   16,
                   spacingScreen,
-                  kBottomGap,
+                  bottomListGap(context),
                 ),
                 itemCount: plans.length,
                 separatorBuilder: (_, _) =>
@@ -67,6 +67,65 @@ class _PlanList extends StatelessWidget {
                   onAccept: onAccept,
                   onDecline: onDecline,
                   onCancel: onCancel,
+                ),
+              );
+        return RefreshIndicator(
+          color: candelaAmber,
+          onRefresh: onRefresh,
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+// ─── Open plans nearby ("Cerca" tab) ──────────────────────────────────────────
+class _OpenPlanList extends StatelessWidget {
+  final Future<List<OpenPlan>> future;
+  final ValueChanged<OpenPlan> onJoin;
+  final Future<void> Function() onRefresh;
+
+  const _OpenPlanList({
+    required this.future,
+    required this.onJoin,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AsyncView<List<OpenPlan>>(
+      future: future,
+      errorTitle: 'No se pudieron cargar los planes cercanos',
+      loading: const ListSkeleton(),
+      builder: (plans) {
+        final child = plans.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 90),
+                  EmptyState(
+                    icon: Icons.explore_outlined,
+                    title: 'Nada abierto cerca',
+                    message:
+                        'Cuando alguien publique un plan cerca de ti, aparecerá aquí.',
+                  ),
+                ],
+              )
+            : ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(
+                  spacingScreen,
+                  16,
+                  spacingScreen,
+                  bottomListGap(context),
+                ),
+                itemCount: plans.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(height: spacingCardGap),
+                itemBuilder: (_, i) => OpenPlanCard(
+                  plan: plans[i],
+                  showPlace: true,
+                  onJoin: () => onJoin(plans[i]),
                 ),
               );
         return RefreshIndicator(
@@ -123,7 +182,7 @@ class _PlanCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: textTheme.bodyMedium?.copyWith(
-                        color: textSecondary,
+                        color: secondaryOn(context),
                       ),
                     ),
                   ],
@@ -140,7 +199,7 @@ class _PlanCard extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: textSecondary,
+                      foregroundColor: secondaryOn(context),
                       side: const BorderSide(color: borderInactive),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(radiusPill),
@@ -171,7 +230,9 @@ class _PlanCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                style: TextButton.styleFrom(foregroundColor: textSecondary),
+                style: TextButton.styleFrom(
+                  foregroundColor: secondaryOn(context),
+                ),
                 onPressed: () => onCancel(plan),
                 child: const Text('Cancelar'),
               ),
@@ -268,7 +329,9 @@ class _PlanDetailSheet extends StatelessWidget {
               plan.isOpen
                   ? _PlanCard._peopleGoingLabel(plan.participantCount)
                   : 'Con @${other?.username ?? '—'}',
-              style: textTheme.bodyMedium?.copyWith(color: textSecondary),
+              style: textTheme.bodyMedium?.copyWith(
+                color: secondaryOn(context),
+              ),
             ),
             const SizedBox(height: 14),
             _StatusPill(status: plan.status),
@@ -277,9 +340,14 @@ class _PlanDetailSheet extends StatelessWidget {
               Text(plan.message, style: textTheme.bodyMedium),
             ],
             const SizedBox(height: 14),
+            // Live countdown while the plan can still happen; the original
+            // deadline once it's settled.
             Text(
-              'Plazo: ${plan.deadlineHours}h',
-              style: textTheme.bodySmall?.copyWith(color: textSecondary),
+              plan.status == PlanStatus.pending ||
+                      plan.status == PlanStatus.accepted
+                  ? countdownLabel(plan.timeLeft)
+                  : 'Plazo: ${plan.deadlineHours}h',
+              style: textTheme.bodySmall?.copyWith(color: secondaryOn(context)),
             ),
           ],
         ),
@@ -418,80 +486,83 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
                   return SizedBox(
                     height: 84,
                     child: friends.isEmpty
-                      ? Center(
-                          child: Text(
-                            'Aún no tienes amigos para proponer un plan',
-                            style: textTheme.bodySmall?.copyWith(
-                              color: textSecondary,
+                        ? Center(
+                            child: Text(
+                              'Aún no tienes amigos para proponer un plan',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: secondaryOn(context),
+                              ),
                             ),
-                          ),
-                        )
-                      : ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: friends.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 14),
-                          itemBuilder: (_, i) {
-                            final f = friends[i];
-                            final sel = f.userId == _friend?.userId;
-                            return GestureDetector(
-                              onTap: () => setState(() => _friend = f),
-                              child: Column(
-                                children: [
-                                  Stack(
-                                    children: [
-                                      UserAvatar(
-                                        username: f.username,
-                                        size: 52,
-                                      ),
-                                      if (sel)
-                                        Positioned(
-                                          right: 0,
-                                          bottom: 0,
-                                          child: Container(
-                                            width: 20,
-                                            height: 20,
-                                            decoration: BoxDecoration(
-                                              color: candelaSage,
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: Theme.of(
-                                                  context,
-                                                ).scaffoldBackgroundColor,
-                                                width: 2,
+                          )
+                        : ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: friends.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 14),
+                            itemBuilder: (_, i) {
+                              final f = friends[i];
+                              final sel = f.userId == _friend?.userId;
+                              return GestureDetector(
+                                onTap: () => setState(() => _friend = f),
+                                child: Column(
+                                  children: [
+                                    Stack(
+                                      children: [
+                                        UserAvatar(
+                                          username: f.username,
+                                          size: 52,
+                                        ),
+                                        if (sel)
+                                          Positioned(
+                                            right: 0,
+                                            bottom: 0,
+                                            child: Container(
+                                              width: 20,
+                                              height: 20,
+                                              decoration: BoxDecoration(
+                                                color: candelaSage,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).scaffoldBackgroundColor,
+                                                  width: 2,
+                                                ),
+                                              ),
+                                              child: const Icon(
+                                                Icons.check_rounded,
+                                                size: 12,
+                                                color: Colors.white,
                                               ),
                                             ),
-                                            child: const Icon(
-                                              Icons.check_rounded,
-                                              size: 12,
-                                              color: Colors.white,
-                                            ),
                                           ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 5),
+                                    SizedBox(
+                                      width: 56,
+                                      child: Text(
+                                        '@${f.username}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: textTheme.bodySmall?.copyWith(
+                                          fontWeight: sel
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          color: sel
+                                              ? null
+                                              : secondaryOn(context),
                                         ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 5),
-                                  SizedBox(
-                                    width: 56,
-                                    child: Text(
-                                      '@${f.username}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: textTheme.bodySmall?.copyWith(
-                                        fontWeight: sel
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                        color: sel ? null : textSecondary,
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                );
-              },
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  );
+                },
               ),
               const SizedBox(height: 18),
             ],
@@ -527,7 +598,7 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
                             Icon(
                               Icons.place_rounded,
                               size: 19,
-                              color: sel ? candelaAmber : textSecondary,
+                              color: sel ? candelaAmber : secondaryOn(context),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -624,7 +695,7 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
   Widget _label(BuildContext context, String t) => Text(
     t,
     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-      color: textSecondary,
+      color: secondaryOn(context),
       fontWeight: FontWeight.w700,
     ),
   );
@@ -655,7 +726,9 @@ class _VisibilitySelector extends StatelessWidget {
           child: GestureDetector(
             onTap: () => onChanged(visibility),
             child: Container(
-              margin: EdgeInsets.only(right: visibility != _options.last.$1 ? 10 : 0),
+              margin: EdgeInsets.only(
+                right: visibility != _options.last.$1 ? 10 : 0,
+              ),
               padding: const EdgeInsets.symmetric(vertical: 12),
               alignment: Alignment.center,
               decoration: BoxDecoration(
@@ -669,14 +742,14 @@ class _VisibilitySelector extends StatelessWidget {
                   Icon(
                     icon,
                     size: 19,
-                    color: sel ? Colors.white : textSecondary,
+                    color: sel ? Colors.white : secondaryOn(context),
                   ),
                   const SizedBox(height: 5),
                   Text(
                     label,
                     style: textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: sel ? Colors.white : textSecondary,
+                      color: sel ? Colors.white : secondaryOn(context),
                     ),
                   ),
                 ],

@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/google_signin_service.dart';
 import '../app/home_shell.dart';
+import '../app/widgets.dart' show CandelaBackButton;
 import 'google_flow_button.dart';
 import 'widgets.dart';
 
@@ -50,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
       );
-      await TokenStorage.save(result.token);
+      await TokenStorage.saveSession(result);
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
@@ -86,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const CandelaBackButton(),
+              const CandelaBackButton(dark: true),
               const SizedBox(height: 28),
               Text(
                 'Entrar',

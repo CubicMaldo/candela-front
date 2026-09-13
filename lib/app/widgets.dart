@@ -292,32 +292,6 @@ class BadgeChip extends StatelessWidget {
   }
 }
 
-// ─── Points pill (spark + number) ─────────────────────────────────────────────
-class PointsPill extends StatelessWidget {
-  final int points;
-  final bool large;
-  const PointsPill(this.points, {this.large = false, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.bolt_rounded, size: large ? 18 : 15, color: candelaSage),
-        const SizedBox(width: 2),
-        Text(
-          '$points',
-          style: jakartaSans(
-            size: large ? 16 : 14,
-            weight: FontWeight.w800,
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 // ─── Card container ───────────────────────────────────────────────────────────
 class AppCard extends StatelessWidget {
   final Widget child;
@@ -406,7 +380,7 @@ class ScreenHeader extends StatelessWidget {
                   style: jakartaSans(
                     size: 14,
                     weight: FontWeight.w500,
-                    color: textSecondary,
+                    color: secondaryOn(context),
                   ),
                 ),
               ],
@@ -470,7 +444,11 @@ class EmptyState extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               message,
-              style: jakartaSans(size: 14, weight: FontWeight.w500, color: muted),
+              style: jakartaSans(
+                size: 14,
+                weight: FontWeight.w500,
+                color: muted,
+              ),
               textAlign: TextAlign.center,
             ),
             if (action != null) ...[const SizedBox(height: 20), action!],
@@ -549,10 +527,7 @@ class PillButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
           border: filled
               ? null
-              : Border.all(
-                  color: onSurface.withValues(alpha: 0.2),
-                  width: 1.5,
-                ),
+              : Border.all(color: onSurface.withValues(alpha: 0.2), width: 1.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -571,6 +546,103 @@ class PillButton extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Open plan card ───────────────────────────────────────────────────────────
+/// Card for an open plan the user can join — shared by the map's plan sheet
+/// and the Plans tab's "Cerca" list. When [showPlace] is true the place name
+/// leads the card (list context); otherwise the creator does (the sheet is
+/// already scoped to one place). The user's own plans show a "Tuyo" pill
+/// instead of the join button — the API rejects joining your own plan.
+class OpenPlanCard extends StatelessWidget {
+  final OpenPlan plan;
+  final VoidCallback onJoin;
+  final bool showPlace;
+  const OpenPlanCard({
+    required this.plan,
+    required this.onJoin,
+    this.showPlace = false,
+    super.key,
+  });
+
+  static String _goingLabel(int count) {
+    final n = count < 1 ? 1 : count;
+    return n == 1 ? '1 va' : '$n van';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final title = plan.isMine
+        ? 'Tu plan'
+        : showPlace
+        ? plan.placeName
+        : 'Con @${plan.creator.username}';
+    final details = [
+      if (showPlace && !plan.isMine) 'Con @${plan.creator.username}',
+      if (showPlace && plan.isMine) plan.placeName,
+      _goingLabel(plan.participantCount),
+      countdownLabel(plan.timeLeft),
+    ].join(' · ');
+    return AppCard(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: textTheme.bodyLarge),
+                const SizedBox(height: 3),
+                Text(
+                  details,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: secondaryOn(context),
+                  ),
+                ),
+                if (plan.message.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    plan.message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (plan.isMine)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: candelaAmber.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(radiusPill),
+              ),
+              child: Text(
+                'Tuyo',
+                style: textTheme.bodySmall?.copyWith(
+                  color: candelaAmber,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          else
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: candelaAmber,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(radiusPill),
+                ),
+              ),
+              onPressed: onJoin,
+              child: const Text('Unirme'),
+            ),
+        ],
       ),
     );
   }
@@ -603,24 +675,15 @@ class SlideRightRoute<T> extends CupertinoPageRoute<T> {
   SlideRightRoute({required super.builder});
 }
 
-/// Tab switches: cross-fades between destinations.
-class FadeRoute<T> extends PageRouteBuilder<T> {
-  final WidgetBuilder builder;
-  FadeRoute({required this.builder})
-    : super(
-        pageBuilder: (context, _, _) => builder(context),
-        transitionsBuilder: (context, animation, _, child) =>
-            FadeTransition(opacity: animation, child: child),
-        transitionDuration: const Duration(milliseconds: 200),
-      );
-}
-
 // ─── Shared header & back button ──────────────────────────────────────────────
 /// The single "chevron in a rounded square" back affordance, shared across every
-/// pushed screen (Settings, Friends, History, Check-in…).
+/// pushed screen (Settings, Friends, History, Check-in…). [dark] forces the
+/// dark-flow styling used by the auth screens, which always sit on Candela
+/// Night regardless of the ambient theme.
 class CandelaBackButton extends StatelessWidget {
   final VoidCallback? onTap;
-  const CandelaBackButton({this.onTap, super.key});
+  final bool dark;
+  const CandelaBackButton({this.onTap, this.dark = false, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -630,10 +693,38 @@ class CandelaBackButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
+          color: dark ? surfaceDark : borderInactive.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(radiusMedium),
+        ),
+        child: Icon(
+          Icons.chevron_left_rounded,
+          size: dark ? 26 : 24,
+          color: dark ? textDarkPrimary : textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+/// 40×40 rounded-square icon button used for header actions (settings, search,
+/// close…). Same footprint and styling as [CandelaBackButton].
+class SquareIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const SquareIconButton({required this.icon, required this.onTap, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
           color: borderInactive.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(radiusMedium),
         ),
-        child: Icon(Icons.chevron_left_rounded, size: 24, color: textSecondary),
+        child: Icon(icon, size: 20, color: secondaryOn(context)),
       ),
     );
   }

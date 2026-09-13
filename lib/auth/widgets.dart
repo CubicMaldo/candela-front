@@ -18,30 +18,6 @@ TextStyle _candelaText({
   color: color,
 );
 
-class CandelaBackButton extends StatelessWidget {
-  const CandelaBackButton({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.maybePop(context),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: surfaceDark,
-          borderRadius: BorderRadius.circular(radiusMedium),
-        ),
-        child: const Icon(
-          Icons.chevron_left_rounded,
-          size: 26,
-          color: textDarkPrimary,
-        ),
-      ),
-    );
-  }
-}
-
 /// Pill-shaped CTA used throughout the dark auth flow. `primary` renders an
 /// amber-filled button; otherwise a transparent button with an amber border.
 class CandelaButton extends StatelessWidget {

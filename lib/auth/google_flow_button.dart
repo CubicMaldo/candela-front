@@ -52,7 +52,7 @@ class _GoogleFlowButtonState extends State<GoogleFlowButton> {
         return;
       }
 
-      await TokenStorage.save(outcome.auth!.token);
+      await TokenStorage.saveSession(outcome.auth!);
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,

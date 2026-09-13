@@ -50,59 +50,6 @@ class _ProfileSkeleton extends StatelessWidget {
   }
 }
 
-// ─── Avatar ───────────────────────────────────────────────────────────────────
-class _AvatarCircle extends StatelessWidget {
-  final String username;
-  final double size;
-  const _AvatarCircle({required this.username, required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    final initial = username.isNotEmpty ? username[0].toUpperCase() : '?';
-    return Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: candelaAmber,
-      ),
-      child: Text(
-        initial,
-        style: TextStyle(
-          fontSize: size * 0.4,
-          fontWeight: FontWeight.w800,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Badge pill ───────────────────────────────────────────────────────────────
-class _BadgePill extends StatelessWidget {
-  final BadgeLevel badge;
-  const _BadgePill(this.badge);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: candelaAmber.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(radiusPill),
-      ),
-      child: Text(
-        badge.label,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: candelaAmber,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Stat item ────────────────────────────────────────────────────────────────
 class _StatItem extends StatelessWidget {
   final int value;
@@ -119,7 +66,7 @@ class _StatItem extends StatelessWidget {
         Text(
           label,
           textAlign: TextAlign.center,
-          style: textTheme.labelSmall?.copyWith(color: textSecondary),
+          style: textTheme.labelSmall?.copyWith(color: secondaryOn(context)),
         ),
       ],
     );
@@ -157,19 +104,22 @@ class _StreakCard extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(
-                  weeks > 0 ? '$weeks semanas seguidas' : 'Sin racha activa',
-                  style: textTheme.titleSmall?.copyWith(color: candelaAmber),
-                ),
+                child: Text(switch (weeks) {
+                  0 => 'Sin racha activa',
+                  1 => '1 semana seguida',
+                  _ => '$weeks semanas seguidas',
+                }, style: textTheme.titleSmall?.copyWith(color: candelaAmber)),
               ),
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            weeks > 0
-                ? '$weekCheckins check-ins esta semana'
-                : 'Empieza tu racha esta semana.',
-            style: textTheme.bodySmall?.copyWith(color: textSecondary),
+            weeks == 0
+                ? 'Empieza tu racha esta semana.'
+                : weekCheckins == 1
+                ? '1 check-in esta semana'
+                : '$weekCheckins check-ins esta semana',
+            style: textTheme.bodySmall?.copyWith(color: secondaryOn(context)),
           ),
         ],
       ),
@@ -198,7 +148,7 @@ class _PointsSection extends StatelessWidget {
       children: [
         TextButton.icon(
           style: TextButton.styleFrom(
-            foregroundColor: textSecondary,
+            foregroundColor: secondaryOn(context),
             padding: EdgeInsets.zero,
           ),
           onPressed: onToggle,
@@ -215,12 +165,16 @@ class _PointsSection extends StatelessWidget {
               children: [
                 Text(
                   'Puntos totales: $pointsTotal',
-                  style: textTheme.bodySmall?.copyWith(color: textSecondary),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: secondaryOn(context),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Text(
                   'Esta temporada: $pointsSeason',
-                  style: textTheme.bodySmall?.copyWith(color: textSecondary),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: secondaryOn(context),
+                  ),
                 ),
               ],
             ),
@@ -255,7 +209,7 @@ class _RankingsSectionState extends State<_RankingsSection> {
     if (!widget.optedIn) {
       return TextButton.icon(
         style: TextButton.styleFrom(
-          foregroundColor: textSecondary,
+          foregroundColor: secondaryOn(context),
           padding: EdgeInsets.zero,
         ),
         onPressed: widget.onOptIn,
@@ -280,7 +234,7 @@ class _RankingsSectionState extends State<_RankingsSection> {
               rank != null
                   ? 'Estás en el puesto #$rank del ranking de amigos'
                   : 'Aún no tienes posición en el ranking de amigos',
-              style: textTheme.bodySmall?.copyWith(color: textSecondary),
+              style: textTheme.bodySmall?.copyWith(color: secondaryOn(context)),
             ),
           ],
         );
@@ -345,7 +299,7 @@ class _RecentCheckIns extends StatelessWidget {
                     Text(
                       timeAgo(e.checkedInAt),
                       style: textTheme.bodySmall?.copyWith(
-                        color: textSecondary,
+                        color: secondaryOn(context),
                       ),
                     ),
                   ],
@@ -355,28 +309,6 @@ class _RecentCheckIns extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _IconButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _IconButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: borderInactive.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(radiusMedium),
-        ),
-        child: Icon(icon, size: 20, color: textSecondary),
-      ),
     );
   }
 }

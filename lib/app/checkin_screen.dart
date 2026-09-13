@@ -36,6 +36,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   _Step _step = _Step.place;
   Place? _place;
   XFile? _photo;
+  DateTime? _capturedAt;
   Position? _position;
 
   // While resolving location for a pick we show a neutral loader instead of the
@@ -65,7 +66,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       // Reveal the place list behind the dialog so the user can retry or pick
       // another place once location is sorted out.
       setState(() => _preparing = false);
-      await _showLocationRequiredDialog();
+      await LocationService.showLocationDisabledDialog(context);
       return;
     }
     setState(() {
@@ -76,47 +77,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
     });
   }
 
-  Future<void> _showLocationRequiredDialog() {
-    return showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: candelaNight,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusCard),
-        ),
-        title: Text(
-          'Necesitamos tu ubicación',
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(color: Colors.white),
-        ),
-        content: Text(
-          'Necesitamos tu ubicación para verificar que estás ahí.',
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: textDarkSecondary),
-        ),
-        actions: [
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: textDarkSecondary),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: candelaAmber),
-            onPressed: () {
-              Navigator.of(context).pop();
-              Geolocator.openLocationSettings();
-            },
-            child: const Text('Abrir ajustes'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _capture(XFile photo) => setState(() {
     _photo = photo;
+    _capturedAt = DateTime.now();
     _step = _Step.confirm;
   });
 
@@ -157,6 +120,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 place: _place!,
                 position: _position!,
                 photo: _photo!,
+                capturedAt: _capturedAt!,
                 onRetake: _retake,
               ),
             },

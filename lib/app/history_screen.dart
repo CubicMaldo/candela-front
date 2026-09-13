@@ -39,7 +39,9 @@ class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
             ? 'Foto guardada en tu historial.'
             : 'La foto vuelve a ser efímera.',
       );
-      setState(() => _history = ApiService.getMyCheckIns(limit: 50));
+      setState(() {
+        _history = ApiService.getMyCheckIns(limit: 50);
+      });
     } on ApiException catch (e) {
       if (!mounted) return;
       showToast(context, e.message);
@@ -134,7 +136,9 @@ class _HistoryRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '${timeAgo(checkIn.checkedInAt)} · +${checkIn.pointsAwarded} pts',
-                  style: textTheme.bodySmall?.copyWith(color: textSecondary),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: secondaryOn(context),
+                  ),
                 ),
               ],
             ),
@@ -150,7 +154,9 @@ class _HistoryRow extends StatelessWidget {
                     ? Icons.push_pin_rounded
                     : Icons.push_pin_outlined,
                 size: 18,
-                color: checkIn.photoIsPermanent ? candelaAmber : textSecondary,
+                color: checkIn.photoIsPermanent
+                    ? candelaAmber
+                    : secondaryOn(context),
               ),
             ),
         ],

@@ -293,6 +293,19 @@ class FeedPlace {
 }
 
 // ─── CheckInEvent (feed item) ────────────────────────────────────────────────
+/// One page of the city feed. [nextCursor] is an opaque token from the API and
+/// is null on the last page — never build one client-side from an event's
+/// timestamp: the feed is ordered by priority layer first, so a timestamp does
+/// not identify a position in it.
+class FeedPage {
+  final List<CheckInEvent> events;
+  final String? nextCursor;
+
+  const FeedPage({required this.events, this.nextCursor});
+
+  bool get hasMore => nextCursor != null;
+}
+
 class CheckInEvent {
   final String checkinId;
   final FeedUser user;
@@ -626,6 +639,11 @@ class OpenPlan {
   final double lon;
   final int participantCount;
 
+  /// True when the viewer created this plan. The discover endpoint never
+  /// returns own plans; this is set client-side when merging outgoing plans
+  /// into the map pins.
+  final bool isMine;
+
   const OpenPlan({
     required this.planId,
     required this.visibility,
@@ -639,6 +657,7 @@ class OpenPlan {
     required this.lat,
     required this.lon,
     required this.participantCount,
+    this.isMine = false,
   });
 
   factory OpenPlan.fromJson(Map<String, dynamic> j) {
@@ -697,22 +716,37 @@ class RankingEntry {
 
 class RankingResponse {
   final List<RankingEntry> entries;
-  final int? userRank;
+
+  /// The caller's own position, or null when they have none (not opted in, or
+  /// no ranked friends). The API sends this as a full entry object, not a bare
+  /// number — see [RankingResponse.fromJson].
+  final RankingEntry? userEntry;
   final String? userRankReason;
 
   const RankingResponse({
     required this.entries,
-    this.userRank,
+    this.userEntry,
     this.userRankReason,
   });
 
-  factory RankingResponse.fromJson(Map<String, dynamic> j) => RankingResponse(
-    entries: ((j['entries'] ?? j['rankings']) as List? ?? const [])
-        .map((e) => RankingEntry.fromJson(e as Map<String, dynamic>))
-        .toList(),
-    userRank: (j['user_rank'] as num?)?.toInt(),
-    userRankReason: j['user_rank_reason'] as String?,
-  );
+  /// The caller's numeric position, or null if they have none.
+  int? get userRank => userEntry?.rank;
+
+  factory RankingResponse.fromJson(Map<String, dynamic> j) {
+    // `user_rank` is an object ({rank, user_id, username, ...}). Reading it as
+    // a number threw, and the throw was swallowed by the FutureBuilder above,
+    // so every user was permanently told they had no ranking position.
+    final raw = j['user_rank'];
+    return RankingResponse(
+      entries: ((j['entries'] ?? j['rankings']) as List? ?? const [])
+          .map((e) => RankingEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      userEntry: raw is Map<String, dynamic>
+          ? RankingEntry.fromJson(raw)
+          : null,
+      userRankReason: j['user_rank_reason'] as String?,
+    );
+  }
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -762,6 +796,28 @@ class FriendRequest {
   );
 }
 
+// ─── User search (GET /api/users?q=) ─────────────────────────────────────────
+class UserSearchResult {
+  final String userId;
+  final String username;
+  final BadgeLevel badgeLevel;
+  final bool isFriend;
+
+  const UserSearchResult({
+    required this.userId,
+    required this.username,
+    required this.badgeLevel,
+    required this.isFriend,
+  });
+
+  factory UserSearchResult.fromJson(Map<String, dynamic> j) => UserSearchResult(
+    userId: (j['user_id'] ?? '').toString(),
+    username: (j['username'] ?? '').toString(),
+    badgeLevel: BadgeLevel.from(j['badge_level']),
+    isFriend: j['is_friend'] == true,
+  );
+}
+
 // ─── Relative time helpers ────────────────────────────────────────────────────
 String timeAgo(DateTime t) {
   final d = DateTime.now().difference(t);
@@ -777,4 +833,25 @@ String countdownLabel(Duration d) {
   if (d.inHours >= 24) return '${d.inDays}d ${d.inHours % 24}h restantes';
   if (d.inHours >= 1) return '${d.inHours}h ${d.inMinutes % 60}m restantes';
   return '${d.inMinutes}m restantes';
+}
+
+/// Human distance label: "240 m" under a km, "4.4 km" above.
+String distanceLabel(double meters) {
+  if (meters < 1000) return '${meters.round()} m';
+  return '${(meters / 1000).toStringAsFixed(1)} km';
+}
+
+// ─── Place category display labels ────────────────────────────────────────────
+/// Spanish display label for an API place category code. The raw codes
+/// ('CAFE', 'NIGHTCLUB'…) must never reach the UI.
+String categoryLabel(String category) {
+  return switch (category.toUpperCase()) {
+    'CAFE' => 'Café',
+    'RESTAURANT' => 'Restaurante',
+    'BAR' => 'Bar',
+    'NIGHTCLUB' => 'Rumba',
+    'PARK' => 'Parque',
+    'UNIVERSITY' => 'Universidad',
+    _ => category,
+  };
 }

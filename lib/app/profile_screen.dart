@@ -69,17 +69,17 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
           errorTitle: 'No se pudo cargar tu perfil',
           loading: const _ProfileSkeleton(),
           builder: (p) => ListView(
-            padding: const EdgeInsets.fromLTRB(
+            padding: EdgeInsets.fromLTRB(
               spacingScreen,
               8,
               spacingScreen,
-              kBottomGap,
+              bottomListGap(context),
             ),
             children: [
               ScreenHeader(
                 title: 'Perfil',
                 padded: false,
-                trailing: _IconButton(
+                trailing: SquareIconButton(
                   icon: Icons.settings_outlined,
                   onTap: () => _openSettings(p),
                 ),
@@ -88,11 +88,11 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
               Center(
                 child: Column(
                   children: [
-                    _AvatarCircle(username: p.username, size: 96),
+                    UserAvatar(username: p.username, size: 96),
                     const SizedBox(height: 14),
                     Text('@${p.username}', style: textTheme.titleMedium),
                     const SizedBox(height: 8),
-                    _BadgePill(p.badgeLevel),
+                    BadgeChip(p.badgeLevel),
                   ],
                 ),
               ),

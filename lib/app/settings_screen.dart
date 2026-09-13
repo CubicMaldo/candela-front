@@ -108,7 +108,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await TokenStorage.clear();
+    // Revokes the refresh token server-side as well, so this device's session
+    // cannot be resumed with a stolen token.
+    await ApiService.logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const WelcomeScreen()),
@@ -122,7 +124,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => AlertDialog.adaptive(
         title: const Text('Eliminar cuenta'),
         content: const Text(
-          'Esta acción es permanente. Se eliminarán tu perfil, tus check-ins y tu historial. ¿Quieres continuar?',
+          'Esta acción es permanente. Se eliminarán tu perfil, tus fotos, tus '
+          'check-ins, tus planes y tus puntos. No se puede deshacer. '
+          '¿Quieres continuar?',
         ),
         actions: [
           TextButton(
@@ -169,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             Text(
               'Privacidad',
-              style: textTheme.bodySmall?.copyWith(color: textSecondary),
+              style: textTheme.bodySmall?.copyWith(color: secondaryOn(context)),
             ),
             const SizedBox(height: 10),
             _SegmentedControl<PrivacyMode>(
@@ -184,7 +188,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Text(
                 _privacyHints[_privacy]!,
                 key: ValueKey(_privacy),
-                style: textTheme.labelSmall?.copyWith(color: textSecondary),
+                style: textTheme.labelSmall?.copyWith(
+                  color: secondaryOn(context),
+                ),
               ),
             ),
 
@@ -199,7 +205,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 26),
             Text(
               'Modo oscuro',
-              style: textTheme.bodySmall?.copyWith(color: textSecondary),
+              style: textTheme.bodySmall?.copyWith(color: secondaryOn(context)),
             ),
             const SizedBox(height: 10),
             ValueListenableBuilder<ThemeMode>(
@@ -272,7 +278,9 @@ class _SegmentedControl<T> extends StatelessWidget {
                   child: Text(
                     labelOf(option),
                     style: textTheme.bodySmall?.copyWith(
-                      color: option == value ? Colors.white : textSecondary,
+                      color: option == value
+                          ? Colors.white
+                          : secondaryOn(context),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -316,7 +324,9 @@ class _ToggleRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: textTheme.bodySmall?.copyWith(color: textSecondary),
+                style: textTheme.bodySmall?.copyWith(
+                  color: secondaryOn(context),
+                ),
               ),
             ],
           ),

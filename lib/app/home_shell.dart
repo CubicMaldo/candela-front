@@ -22,12 +22,22 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _tabs = [
-    MapScreen(),
-    FeedScreen(),
-    PlansScreen(),
-    MyProfileScreen(),
+  // Broadcasts the active tab so tabs kept alive in the IndexedStack (e.g. the
+  // map) can refresh their live data when they become visible again.
+  final _tabIndex = ValueNotifier<int>(0);
+
+  late final List<Widget> _tabs = [
+    MapScreen(activeTab: _tabIndex),
+    const FeedScreen(),
+    const PlansScreen(),
+    const MyProfileScreen(),
   ];
+
+  @override
+  void dispose() {
+    _tabIndex.dispose();
+    super.dispose();
+  }
 
   void _openCheckIn() {
     HapticFeedback.lightImpact();
@@ -41,6 +51,7 @@ class _HomeShellState extends State<HomeShell> {
     if (i == _index) return;
     HapticFeedback.selectionClick();
     setState(() => _index = i);
+    _tabIndex.value = i;
   }
 
   @override
@@ -212,16 +223,16 @@ class _NavBar extends StatelessWidget {
           child: SafeArea(
             top: false,
             child: SizedBox(
-              height: 62,
+              height: kNavBarHeight,
               child: Row(
                 children: [
-                  _tab(0),
-                  _tab(1),
+                  _tab(context, 0),
+                  _tab(context, 1),
                   // Clearance under the docked check-in FAB so no tab's hit
                   // area hides beneath it.
                   const SizedBox(width: 72),
-                  _tab(2),
-                  _tab(3),
+                  _tab(context, 2),
+                  _tab(context, 3),
                 ],
               ),
             ),
@@ -231,9 +242,9 @@ class _NavBar extends StatelessWidget {
     );
   }
 
-  Widget _tab(int i) {
+  Widget _tab(BuildContext context, int i) {
     final active = i == index;
-    final color = active ? candelaAmber : textSecondary;
+    final color = active ? candelaAmber : secondaryOn(context);
     return Expanded(
       child: Semantics(
         button: true,

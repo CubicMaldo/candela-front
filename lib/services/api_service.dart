@@ -42,13 +42,53 @@ class ApiService {
     return headers;
   }
 
+  /// In-flight refresh, shared by every request that hits a 401 at the same
+  /// time. Without it, a screen firing three parallel calls would spend three
+  /// refresh tokens; the server rotates on use, so the last two would fail and
+  /// log the user out mid-session.
+  static Future<bool>? _refreshInFlight;
+
+  /// Exchanges the stored refresh token for a new session. Returns false when
+  /// the refresh token is missing or rejected — the caller must then treat the
+  /// session as over.
+  static Future<bool> _refreshSession() {
+    return _refreshInFlight ??= () async {
+      try {
+        final refreshToken = await TokenStorage.getRefresh();
+        if (refreshToken == null || refreshToken.isEmpty) return false;
+
+        final res = await client
+            .post(
+              Uri.parse('$baseUrl/api/auth/refresh'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({'refresh_token': refreshToken}),
+            )
+            .timeout(apiTimeout);
+
+        if (res.statusCode < 200 || res.statusCode >= 300) return false;
+
+        await TokenStorage.saveSession(
+          AuthResult.fromJson(_asMap(jsonDecode(res.body))),
+        );
+        return true;
+      } catch (_) {
+        // A network failure is not proof the session is gone, but the request
+        // that triggered this cannot proceed either. Reporting false ends this
+        // attempt; the next one retries the refresh from scratch.
+        return false;
+      } finally {
+        _refreshInFlight = null;
+      }
+    }();
+  }
+
   static Future<dynamic> _handle(http.Response res, {bool auth = true}) async {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return res.body.isEmpty ? null : jsonDecode(res.body);
     }
-    // A 401 on an authenticated request means the stored token is invalid or
-    // expired — log the user out. A 401 on an unauthenticated endpoint (e.g.
-    // login with wrong credentials) is just a regular API error to surface.
+    // A 401 that survived the refresh-and-retry in _send means the session is
+    // genuinely over. A 401 on an unauthenticated endpoint (e.g. login with
+    // wrong credentials) is just a regular API error to surface.
     if (res.statusCode == 401 && auth) {
       await TokenStorage.clear();
       onSessionExpired?.call();
@@ -71,48 +111,55 @@ class ApiService {
     }
   }
 
-  static Future<dynamic> _get(String path, {bool auth = true}) async {
-    final res = await client
-        .get(Uri.parse('$baseUrl$path'), headers: await _headers(auth: auth))
-        .timeout(apiTimeout);
+  /// Runs an authenticated request, refreshing the access token once if the
+  /// server rejects it. The access token lives an hour, so without this the
+  /// user is thrown back to the login screen every hour — potentially in the
+  /// middle of a check-in.
+  static Future<dynamic> _send(
+    Future<http.Response> Function(Map<String, String> headers) request, {
+    bool auth = true,
+  }) async {
+    var res = await request(await _headers(auth: auth)).timeout(apiTimeout);
+
+    if (res.statusCode == 401 && auth) {
+      if (await _refreshSession()) {
+        res = await request(await _headers(auth: auth)).timeout(apiTimeout);
+      }
+    }
+
     return _handle(res, auth: auth);
   }
+
+  static Future<dynamic> _get(String path, {bool auth = true}) => _send(
+    (headers) => client.get(Uri.parse('$baseUrl$path'), headers: headers),
+    auth: auth,
+  );
 
   static Future<dynamic> _post(
     String path, [
     Map<String, dynamic>? data,
     bool auth = true,
-  ]) async {
-    final res = await client
-        .post(
-          Uri.parse('$baseUrl$path'),
-          headers: await _headers(auth: auth),
-          body: data == null ? null : jsonEncode(data),
-        )
-        .timeout(apiTimeout);
-    return _handle(res, auth: auth);
-  }
+  ]) => _send(
+    (headers) => client.post(
+      Uri.parse('$baseUrl$path'),
+      headers: headers,
+      body: data == null ? null : jsonEncode(data),
+    ),
+    auth: auth,
+  );
 
-  static Future<dynamic> _patch(
-    String path, [
-    Map<String, dynamic>? data,
-  ]) async {
-    final res = await client
-        .patch(
+  static Future<dynamic> _patch(String path, [Map<String, dynamic>? data]) =>
+      _send(
+        (headers) => client.patch(
           Uri.parse('$baseUrl$path'),
-          headers: await _headers(),
+          headers: headers,
           body: data == null ? null : jsonEncode(data),
-        )
-        .timeout(apiTimeout);
-    return _handle(res);
-  }
+        ),
+      );
 
-  static Future<dynamic> _delete(String path) async {
-    final res = await client
-        .delete(Uri.parse('$baseUrl$path'), headers: await _headers())
-        .timeout(apiTimeout);
-    return _handle(res);
-  }
+  static Future<dynamic> _delete(String path) => _send(
+    (headers) => client.delete(Uri.parse('$baseUrl$path'), headers: headers),
+  );
 
   static Map<String, dynamic> _asMap(dynamic j) =>
       (j as Map).cast<String, dynamic>();
@@ -130,8 +177,7 @@ class ApiService {
       'password': password,
       'birth_date': birthDate,
     }, false);
-    final m = _asMap(j);
-    return AuthResult(token: m['token'] as String, user: _asMap(m['user']));
+    return AuthResult.fromJson(_asMap(j));
   }
 
   static Future<AuthResult> login({
@@ -142,8 +188,7 @@ class ApiService {
       'email': email,
       'password': password,
     }, false);
-    final m = _asMap(j);
-    return AuthResult(token: m['token'] as String, user: _asMap(m['user']));
+    return AuthResult.fromJson(_asMap(j));
   }
 
   static Future<GoogleAuthOutcome> loginWithGoogle({
@@ -154,9 +199,7 @@ class ApiService {
     if (m['needs_registration'] == true) {
       return GoogleAuthOutcome.needsRegistration((m['email'] ?? '').toString());
     }
-    return GoogleAuthOutcome.authenticated(
-      AuthResult(token: m['token'] as String, user: _asMap(m['user'])),
-    );
+    return GoogleAuthOutcome.authenticated(AuthResult.fromJson(m));
   }
 
   static Future<AuthResult> registerWithGoogle({
@@ -169,8 +212,24 @@ class ApiService {
       'username': username,
       'birth_date': birthDate,
     }, false);
-    final m = _asMap(j);
-    return AuthResult(token: m['token'] as String, user: _asMap(m['user']));
+    return AuthResult.fromJson(_asMap(j));
+  }
+
+  /// Ends the session on this device: revokes the refresh token server-side so
+  /// it cannot be replayed, then clears local storage. Clearing happens even if
+  /// the network call fails — a user who tapped "cerrar sesión" must not be
+  /// left signed in.
+  static Future<void> logout() async {
+    try {
+      final refreshToken = await TokenStorage.getRefresh();
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await _post('/api/auth/logout', {'refresh_token': refreshToken}, false);
+      }
+    } catch (_) {
+      // Best effort; the token expires on its own.
+    } finally {
+      await TokenStorage.clear();
+    }
   }
 
   static Future<void> deleteAccount() async {
@@ -199,6 +258,15 @@ class ApiService {
     return PublicProfile.fromJson(_asMap(j));
   }
 
+  /// Username prefix search for the friends screen.
+  static Future<List<UserSearchResult>> searchUsers(String query) async {
+    final j = await _get('/api/users?q=${Uri.encodeQueryComponent(query)}');
+    final m = _asMap(j);
+    return (m['users'] as List? ?? const [])
+        .map((e) => UserSearchResult.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   static Future<void> updatePrivacy(PrivacyMode mode) =>
       _patch('/api/me/privacy', {'privacy_mode': mode.raw});
 
@@ -224,11 +292,15 @@ class ApiService {
     required String placeId,
     required String checkinNonce,
     required String photoKey,
+    required DateTime capturedAt,
     bool photoIsPermanent = false,
   }) async {
     final j = await _post('/api/places/$placeId/checkin/confirm', {
       'checkin_nonce': checkinNonce,
       'photo_key': photoKey,
+      // The API requires the capture timestamp and rejects photos older than
+      // 60s — the "live photo" guarantee.
+      'exif_timestamp': capturedAt.toUtc().toIso8601String(),
       'photo_is_permanent': photoIsPermanent,
     });
     return ConfirmCheckInResult.fromJson(_asMap(j));
@@ -258,19 +330,25 @@ class ApiService {
   }
 
   // ── Feed ───────────────────────────────────────────────────────────────────
-  static Future<List<CheckInEvent>> getFeed({
-    String? cursor,
-    int limit = 20,
-  }) async {
+  /// One page of the city feed, plus the cursor for the next one.
+  ///
+  /// The cursor is opaque and must come from [FeedPage.nextCursor] — the feed
+  /// is ordered by priority layer before time, so a timestamp taken from the
+  /// last event does not describe a position in it and paging on one returns
+  /// events the reader has already seen.
+  static Future<FeedPage> getFeed({String? cursor, int limit = 20}) async {
     final query = StringBuffer('?limit=$limit');
     if (cursor != null) {
-      query.write('&before=${Uri.encodeQueryComponent(cursor)}');
+      query.write('&cursor=${Uri.encodeQueryComponent(cursor)}');
     }
     final j = await _get('/api/feed$query');
     final m = _asMap(j);
-    return ((m['events'] ?? m['rankings']) as List? ?? const [])
-        .map((e) => CheckInEvent.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return FeedPage(
+      events: (m['events'] as List? ?? const [])
+          .map((e) => CheckInEvent.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      nextCursor: m['next_cursor'] as String?,
+    );
   }
 
   static Future<List<CheckInEvent>> getEventFeed(

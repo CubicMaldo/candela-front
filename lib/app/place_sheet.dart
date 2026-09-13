@@ -38,6 +38,14 @@ class _PlaceSheetState extends State<_PlaceSheet> {
     super.initState();
     _place = widget.place;
     _events = ApiService.getEventFeed(_place.placeId);
+    // The map/list hand us the "nearby" shape, which lacks the live counters
+    // (active_checkins_count, is_followed, follower_count) — refresh from the
+    // detail endpoint so the sheet never shows "0 personas" on an active spot.
+    ApiService.getPlaceDetail(_place.placeId)
+        .then((detail) {
+          if (mounted) setState(() => _place = detail);
+        })
+        .catchError((_) {});
   }
 
   Future<void> _toggleFollow() async {
@@ -68,10 +76,12 @@ class _PlaceSheetState extends State<_PlaceSheet> {
       maxChildSize: 1.0,
       expand: false,
       builder: (context, scrollController) {
+        // Theme-aware like every other sheet in the app — Sand in light mode,
+        // Night in dark mode.
         return Container(
-          decoration: const BoxDecoration(
-            color: surfaceDark,
-            borderRadius: BorderRadius.vertical(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(
               top: Radius.circular(radiusCard),
             ),
           ),
@@ -103,9 +113,7 @@ class _PlaceSheetState extends State<_PlaceSheet> {
               const SizedBox(height: 22),
               Text(
                 'Actividad reciente',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(color: textDarkPrimary),
+                style: Theme.of(context).textTheme.titleSmall,
               ),
               const SizedBox(height: 12),
               _EventStrip(future: _events),
@@ -140,10 +148,7 @@ class _Header extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                place.name,
-                style: textTheme.titleSmall?.copyWith(color: Colors.white),
-              ),
+              Text(place.name, style: textTheme.titleSmall),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -160,15 +165,17 @@ class _Header extends StatelessWidget {
                       borderRadius: BorderRadius.circular(radiusPill),
                     ),
                     child: Text(
-                      place.category,
+                      categoryLabel(place.category),
                       style: textTheme.bodySmall?.copyWith(
-                        color: borderInactive,
+                        color: secondaryOn(context),
                       ),
                     ),
                   ),
                   Text(
                     'Radio ${place.geofenceMeters} m',
-                    style: textTheme.bodySmall?.copyWith(color: textSecondary),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: secondaryOn(context),
+                    ),
                   ),
                 ],
               ),
@@ -256,7 +263,7 @@ class _EventStrip extends StatelessWidget {
             'Sé el primero en llegar.',
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: textSecondary),
+            ).textTheme.bodySmall?.copyWith(color: secondaryOn(context)),
           );
         }
         return SizedBox(

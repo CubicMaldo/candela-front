@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
@@ -21,7 +22,8 @@ class _FriendsScreenState extends State<FriendsScreen>
   late Future<List<FriendRequest>> _requests;
   bool _searching = false;
   final _searchCtrl = TextEditingController();
-  Future<PublicProfile?>? _searchResult;
+  Future<List<UserSearchResult>>? _searchResults;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -34,6 +36,7 @@ class _FriendsScreenState extends State<FriendsScreen>
   void dispose() {
     _tabController.dispose();
     _searchCtrl.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -97,34 +100,36 @@ class _FriendsScreenState extends State<FriendsScreen>
     }
   }
 
-  Future<void> _searchUser() async {
-    final username = _searchCtrl.text.trim();
-    if (username.isEmpty) {
-      setState(() => _searchResult = null);
-      return;
-    }
+  /// Live search-as-you-type, debounced so we don't hit the API per keystroke.
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 350),
+      () => _runSearch(value),
+    );
+  }
+
+  void _runSearch(String value) {
+    if (!mounted) return;
+    final query = value.trim();
     setState(() {
-      _searchResult = ApiService.getPublicProfile(
-        username,
-      ).then<PublicProfile?>((p) => p).catchError((_) => null);
+      _searchResults = query.length < 2 ? null : ApiService.searchUsers(query);
     });
   }
 
-  Future<void> _addFriend(PublicProfile profile) async {
+  Future<void> _addFriend(UserSearchResult user) async {
     try {
-      await ApiService.sendFriendRequest(profile.userId);
+      await ApiService.sendFriendRequest(user.userId);
       if (!mounted) return;
-      showToast(context, 'Solicitud enviada a @${profile.username}');
+      showToast(context, 'Solicitud enviada a @${user.username}');
     } on ApiException catch (e) {
       if (mounted) showToast(context, e.message);
     }
   }
 
+  // Open the propose-plan sheet directly — no intermediate screen.
   void _openPlanFor(FeedUser friend) {
-    Navigator.push(
-      context,
-      SlideRightRoute(builder: (_) => PlansScreen(prefillFriend: friend)),
-    );
+    showProposePlanSheet(context, friend: friend);
   }
 
   @override
@@ -133,75 +138,83 @@ class _FriendsScreenState extends State<FriendsScreen>
       body: SafeArea(
         bottom: false,
         child: Column(
-        children: [
-          ScreenHeader(
-            title: 'Amigos',
-            showBack: true,
-            trailing: _IconBtn(
-              icon: _searching ? Icons.close_rounded : Icons.search_rounded,
-              onTap: () => setState(() {
-                _searching = !_searching;
-                if (!_searching) {
-                  _searchCtrl.clear();
-                  _searchResult = null;
-                }
-              }),
-            ),
-          ),
-          if (_searching) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                spacingScreen,
-                12,
-                spacingScreen,
-                0,
-              ),
-              child: _SearchField(
-                controller: _searchCtrl,
-                onSubmitted: (_) => _searchUser(),
+          children: [
+            ScreenHeader(
+              title: 'Amigos',
+              showBack: true,
+              trailing: SquareIconButton(
+                icon: _searching ? Icons.close_rounded : Icons.search_rounded,
+                onTap: () => setState(() {
+                  _searching = !_searching;
+                  if (!_searching) {
+                    _searchCtrl.clear();
+                    _searchDebounce?.cancel();
+                    _searchResults = null;
+                  }
+                }),
               ),
             ),
-            if (_searchResult != null)
+            if (_searching) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                   spacingScreen,
-                  10,
+                  12,
                   spacingScreen,
                   0,
                 ),
-                child: _SearchResult(future: _searchResult!, onAdd: _addFriend),
+                child: _SearchField(
+                  controller: _searchCtrl,
+                  onChanged: _onSearchChanged,
+                  onSubmitted: _runSearch,
+                ),
               ),
+              if (_searchResults != null)
+                // Flexible + scroll so a full page of matches never overflows.
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(
+                      spacingScreen,
+                      10,
+                      spacingScreen,
+                      0,
+                    ),
+                    child: _SearchResults(
+                      future: _searchResults!,
+                      onAdd: _addFriend,
+                    ),
+                  ),
+                ),
+            ],
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: spacingScreen,
+                vertical: 14,
+              ),
+              child: FutureBuilder<List<FriendRequest>>(
+                future: _requests,
+                builder: (context, snap) {
+                  final n = snap.data?.length ?? 0;
+                  return TabBar(
+                    controller: _tabController,
+                    labelColor: candelaAmber,
+                    unselectedLabelColor: secondaryOn(context),
+                    indicatorColor: candelaAmber,
+                    dividerColor: Colors.transparent,
+                    tabs: [
+                      const Tab(text: 'Amigos'),
+                      Tab(text: n > 0 ? 'Solicitudes ($n)' : 'Solicitudes'),
+                    ],
+                  );
+                },
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [_buildFriends(), _buildRequests()],
+              ),
+            ),
           ],
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: spacingScreen,
-              vertical: 14,
-            ),
-            child: FutureBuilder<List<FriendRequest>>(
-              future: _requests,
-              builder: (context, snap) {
-                final n = snap.data?.length ?? 0;
-                return TabBar(
-                  controller: _tabController,
-                  labelColor: candelaAmber,
-                  unselectedLabelColor: textSecondary,
-                  indicatorColor: candelaAmber,
-                  dividerColor: Colors.transparent,
-                  tabs: [
-                    const Tab(text: 'Amigos'),
-                    Tab(text: n > 0 ? 'Solicitudes ($n)' : 'Solicitudes'),
-                  ],
-                );
-              },
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [_buildFriends(), _buildRequests()],
-            ),
-          ),
-        ],
         ),
       ),
     );
@@ -227,11 +240,11 @@ class _FriendsScreenState extends State<FriendsScreen>
           );
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             spacingScreen,
             0,
             spacingScreen,
-            kBottomGap,
+            bottomListGap(context),
           ),
           itemCount: friends.length,
           separatorBuilder: (_, _) => const SizedBox(height: 10),
@@ -259,11 +272,11 @@ class _FriendsScreenState extends State<FriendsScreen>
           );
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             spacingScreen,
             0,
             spacingScreen,
-            kBottomGap,
+            bottomListGap(context),
           ),
           itemCount: requests.length,
           separatorBuilder: (_, _) => const SizedBox(height: 10),
@@ -290,7 +303,9 @@ class _FriendsScreenState extends State<FriendsScreen>
                     ),
                   ),
                   TextButton(
-                    style: TextButton.styleFrom(foregroundColor: textSecondary),
+                    style: TextButton.styleFrom(
+                      foregroundColor: secondaryOn(context),
+                    ),
                     onPressed: () => _reject(r),
                     child: const Text('Rechazar'),
                   ),
@@ -343,7 +358,9 @@ class _FriendRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   friend.badgeLevel.label,
-                  style: textTheme.bodySmall?.copyWith(color: textSecondary),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: secondaryOn(context),
+                  ),
                 ),
               ],
             ),
@@ -361,7 +378,11 @@ class _FriendRow extends StatelessWidget {
             child: const Text('Proponer plan'),
           ),
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert_rounded, size: 20, color: textSecondary),
+            icon: Icon(
+              Icons.more_vert_rounded,
+              size: 20,
+              color: secondaryOn(context),
+            ),
             onSelected: (_) => onRemove(),
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'remove', child: Text('Dejar de ser amigo')),
@@ -376,13 +397,20 @@ class _FriendRow extends StatelessWidget {
 // ─── Search field & result ────────────────────────────────────────────────────
 class _SearchField extends StatelessWidget {
   final TextEditingController controller;
+  final ValueChanged<String> onChanged;
   final ValueChanged<String> onSubmitted;
-  const _SearchField({required this.controller, required this.onSubmitted});
+  const _SearchField({
+    required this.controller,
+    required this.onChanged,
+    required this.onSubmitted,
+  });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
+      autofocus: true,
+      onChanged: onChanged,
       onSubmitted: onSubmitted,
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
@@ -398,14 +426,16 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-class _SearchResult extends StatelessWidget {
-  final Future<PublicProfile?> future;
-  final ValueChanged<PublicProfile> onAdd;
-  const _SearchResult({required this.future, required this.onAdd});
+/// Live results for the username search: any user whose name starts with the
+/// query, with an add button (or an "Amigos" tag when already connected).
+class _SearchResults extends StatelessWidget {
+  final Future<List<UserSearchResult>> future;
+  final ValueChanged<UserSearchResult> onAdd;
+  const _SearchResults({required this.future, required this.onAdd});
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<PublicProfile?>(
+    return FutureBuilder<List<UserSearchResult>>(
       future: future,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
@@ -419,76 +449,74 @@ class _SearchResult extends StatelessWidget {
             ),
           );
         }
-        final profile = snap.data;
-        if (profile == null) {
+        final users = snap.data ?? const <UserSearchResult>[];
+        if (users.isEmpty) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
             child: Text(
-              'No encontramos a ese usuario.',
+              'No encontramos a nadie con ese nombre.',
               style: Theme.of(
                 context,
-              ).textTheme.bodyMedium?.copyWith(color: textSecondary),
+              ).textTheme.bodyMedium?.copyWith(color: secondaryOn(context)),
             ),
           );
         }
         final textTheme = Theme.of(context).textTheme;
-        return AppCard(
-          child: Row(
-            children: [
-              UserAvatar(username: profile.username, size: 44),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('@${profile.username}', style: textTheme.bodyLarge),
-                    const SizedBox(height: 2),
-                    Text(
-                      profile.badgeLevel.label,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: textSecondary,
+        return Column(
+          children: [
+            for (final user in users)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: AppCard(
+                  child: Row(
+                    children: [
+                      UserAvatar(username: user.username, size: 44),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '@${user.username}',
+                              style: textTheme.bodyLarge,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              user.badgeLevel.label,
+                              style: textTheme.bodySmall?.copyWith(
+                                color: secondaryOn(context),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: candelaAmber,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(radiusPill),
+                      if (user.isFriend)
+                        Text(
+                          'Amigos',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: candelaSage,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      else
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: candelaAmber,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(radiusPill),
+                            ),
+                          ),
+                          onPressed: () => onAdd(user),
+                          child: const Text('Agregar'),
+                        ),
+                    ],
                   ),
                 ),
-                onPressed: () => onAdd(profile),
-                child: const Text('Agregar'),
               ),
-            ],
-          ),
+          ],
         );
       },
-    );
-  }
-}
-
-class _IconBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _IconBtn({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: borderInactive.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(radiusMedium),
-        ),
-        child: Icon(icon, size: 20, color: textSecondary),
-      ),
     );
   }
 }

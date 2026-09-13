@@ -30,6 +30,10 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  // Where the user is right now, to show how far each place is before they
+  // commit to it (the geofence check at publish needs them within ~200 m).
+  Position? _position;
+
   @override
   void initState() {
     super.initState();
@@ -38,10 +42,31 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
 
   Future<List<Place>> _loadPlaces() async {
     final position = await LocationService.getCurrentPosition();
+    if (mounted && position != null) setState(() => _position = position);
     return ApiService.getNearbyPlaces(
       lat: position?.latitude ?? fallbackLat,
       lon: position?.longitude ?? fallbackLon,
     );
+  }
+
+  String _subtitleFor(Place p) {
+    final parts = [
+      categoryLabel(p.category),
+      if (_position != null)
+        distanceLabel(
+          Geolocator.distanceBetween(
+            _position!.latitude,
+            _position!.longitude,
+            p.lat,
+            p.lon,
+          ),
+        ),
+      if (p.isActive && p.activeCheckinsCount > 0)
+        p.activeCheckinsCount == 1
+            ? '1 en candela ahora'
+            : '${p.activeCheckinsCount} en candela ahora',
+    ];
+    return parts.join(' · ');
   }
 
   @override
@@ -79,7 +104,7 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
                       child: Icon(
                         Icons.close_rounded,
                         size: 22,
-                        color: textSecondary,
+                        color: secondaryOn(context),
                       ),
                     ),
                   ),
@@ -158,7 +183,7 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
                             Text(
                               'Propón un plan para verte con un amigo',
                               style: textTheme.bodySmall?.copyWith(
-                                color: textSecondary,
+                                color: secondaryOn(context),
                               ),
                             ),
                           ],
@@ -167,7 +192,7 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
                       Icon(
                         Icons.chevron_right_rounded,
                         size: 20,
-                        color: textSecondary,
+                        color: secondaryOn(context),
                       ),
                     ],
                   ),
@@ -191,7 +216,9 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
                         .where(
                           (p) =>
                               p.name.toLowerCase().contains(_query) ||
-                              p.category.toLowerCase().contains(_query),
+                              categoryLabel(
+                                p.category,
+                              ).toLowerCase().contains(_query),
                         )
                         .toList();
                   }
@@ -241,13 +268,11 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      p.isActive && p.activeCheckinsCount > 0
-                                          ? '${p.category} · ${p.activeCheckinsCount} en candela ahora'
-                                          : p.category,
+                                      _subtitleFor(p),
                                       style: textTheme.bodySmall?.copyWith(
                                         color: p.isActive
                                             ? candelaAmber
-                                            : textSecondary,
+                                            : secondaryOn(context),
                                       ),
                                     ),
                                   ],
@@ -256,7 +281,7 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
                               Icon(
                                 Icons.chevron_right_rounded,
                                 size: 20,
-                                color: textSecondary,
+                                color: secondaryOn(context),
                               ),
                             ],
                           ),
@@ -564,11 +589,13 @@ class _ConfirmStep extends StatefulWidget {
   final Place place;
   final Position position;
   final XFile photo;
+  final DateTime capturedAt;
   final VoidCallback onRetake;
   const _ConfirmStep({
     required this.place,
     required this.position,
     required this.photo,
+    required this.capturedAt,
     required this.onRetake,
   });
 
@@ -584,10 +611,15 @@ class _ConfirmStepState extends State<_ConfirmStep> {
     if (_publishing) return;
     setState(() => _publishing = true);
     try {
+      // Re-read the position at publish time: the one captured when the place
+      // was picked may be minutes old (user walking towards the place), and
+      // the geofence validation happens here.
+      final position =
+          await LocationService.getCurrentPosition() ?? widget.position;
       final initiation = await ApiService.initiateCheckIn(
         placeId: widget.place.placeId,
-        lat: widget.position.latitude,
-        lon: widget.position.longitude,
+        lat: position.latitude,
+        lon: position.longitude,
       );
       final bytes = await widget.photo.readAsBytes();
       final uploadRes = await http.put(
@@ -605,6 +637,7 @@ class _ConfirmStepState extends State<_ConfirmStep> {
         placeId: widget.place.placeId,
         checkinNonce: initiation.checkinNonce,
         photoKey: initiation.photoKey,
+        capturedAt: widget.capturedAt,
         photoIsPermanent: _permanent,
       );
       if (widget.photo.path.isNotEmpty) {
@@ -617,11 +650,10 @@ class _ConfirmStepState extends State<_ConfirmStep> {
       Navigator.of(context).popUntil((r) => r.isFirst);
     } on ApiException catch (e) {
       if (!mounted) return;
-      if (e.statusCode == 422) {
-        showToast(context, 'No te ubico bien ahí. Acércate un poco más.');
-      } else {
-        showToast(context, e.message);
-      }
+      // The API's 422 messages here are already user-facing Candela voice
+      // (GPS, expired nonce, stale photo) — show them as-is instead of
+      // assuming every 422 is a GPS problem.
+      showToast(context, e.message);
     } catch (_) {
       if (mounted) {
         showToast(

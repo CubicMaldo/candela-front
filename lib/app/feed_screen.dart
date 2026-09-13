@@ -22,6 +22,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
   late Future<bool> _initial;
   bool _loadingMore = false;
+  String? _nextCursor;
   bool _hasMore = true;
 
   @override
@@ -39,13 +40,14 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Future<bool> _load() async {
-    final events = await ApiService.getFeed();
+    final page = await ApiService.getFeed();
     if (!mounted) return true;
     setState(() {
       _events
         ..clear()
-        ..addAll(events);
-      _hasMore = events.isNotEmpty;
+        ..addAll(page.events);
+      _nextCursor = page.nextCursor;
+      _hasMore = page.hasMore;
     });
     return true;
   }
@@ -63,15 +65,19 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Future<void> _loadMore() async {
-    if (_events.isEmpty) return;
+    final cursor = _nextCursor;
+    if (cursor == null) return;
     setState(() => _loadingMore = true);
     try {
-      final cursor = _events.last.checkedInAt.toIso8601String();
-      final more = await ApiService.getFeed(cursor: cursor);
+      final page = await ApiService.getFeed(cursor: cursor);
       if (!mounted) return;
       setState(() {
-        _events.addAll(more);
-        _hasMore = more.isNotEmpty;
+        // Guard against a stale page arriving after a pull-to-refresh reset
+        // the list: appending it would duplicate what is already on screen.
+        final seen = _events.map((e) => e.checkinId).toSet();
+        _events.addAll(page.events.where((e) => seen.add(e.checkinId)));
+        _nextCursor = page.nextCursor;
+        _hasMore = page.hasMore;
       });
     } finally {
       if (mounted) setState(() => _loadingMore = false);
@@ -131,10 +137,14 @@ class _FeedScreenState extends State<FeedScreen> {
           child: ListView.separated(
             controller: _scrollCtrl,
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.zero,
+            // Photos slide under the frosted nav bar while scrolling (the
+            // premium translucency), but the last card must be able to rise
+            // fully above it — otherwise its @user/place metadata stays hidden
+            // behind the bar at rest.
+            padding: EdgeInsets.only(bottom: bottomListGap(context)),
             itemCount: _events.length + (_loadingMore ? 1 : 0),
             separatorBuilder: (_, _) => const SizedBox(height: 2),
-            itemBuilder: (_, i) {
+            itemBuilder: (context, i) {
               if (i >= _events.length) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
@@ -153,11 +163,20 @@ class _FeedScreenState extends State<FeedScreen> {
               final event = _events[i];
               final layer = event.priorityLayer;
               final previousLayer = i > 0 ? _events[i - 1].priorityLayer : null;
+              // The list is edge-to-edge (photos slide under the status bar),
+              // so a header at the very top needs the inset or the clock
+              // overlaps its text.
+              final topInset = i == 0
+                  ? MediaQuery.of(context).padding.top
+                  : 0.0;
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (layer != null && layer != previousLayer)
-                    _LayerHeader(layer),
+                    Padding(
+                      padding: EdgeInsets.only(top: topInset),
+                      child: _LayerHeader(layer),
+                    ),
                   _FeedCard(event),
                 ],
               );
@@ -181,10 +200,10 @@ class _EmptyFeed extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.local_fire_department_rounded,
               size: 40,
-              color: textSecondary,
+              color: secondaryOn(context),
             ),
             const SizedBox(height: 14),
             Text(
@@ -192,7 +211,7 @@ class _EmptyFeed extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(
                 context,
-              ).textTheme.bodyMedium?.copyWith(color: textSecondary),
+              ).textTheme.bodyMedium?.copyWith(color: secondaryOn(context)),
             ),
           ],
         ),
@@ -225,7 +244,7 @@ class _LayerHeader extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: textSecondary,
+              color: secondaryOn(context),
               fontWeight: FontWeight.w700,
               letterSpacing: 0.4,
             ),

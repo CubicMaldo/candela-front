@@ -11,7 +11,15 @@ const candelaSage = Color(0xFF5C8B6E);
 const textSecondary = Color(0xFF6B5E58);
 const borderInactive = Color(0xFFC4B8B2);
 const textDarkPrimary = Color(0xFFFAF6F0);
-const textDarkSecondary = Color(0xFF6B5E58);
+
+/// Secondary text on dark surfaces. A warm grey that keeps the Candela cast
+/// (it is Sand desaturated toward Night, not a neutral grey).
+///
+/// This must NOT be [textSecondary]. That colour is tuned for dark-on-light and
+/// scores ~2.9:1 over Candela Night — below the 4.5:1 WCAG AA needs for body
+/// text — which faded every timestamp, subtitle and metadata line in the theme
+/// the product calls its premium experience. This value scores ~6.6:1.
+const textDarkSecondary = Color(0xFFA89A92);
 
 /// Card/sheet surface used on the dark (Candela Night) theme. Shared so screens
 /// don't re-hardcode the literal `0xFF2C2420`.
@@ -38,6 +46,21 @@ const spacingCardGap = 12.0;
 /// frosted tab bar + the raised central check-in button. Use as the bottom
 /// padding of full-screen lists.
 const kBottomGap = 96.0;
+
+/// Height of the frosted bottom nav bar's content row (see `_NavBar`).
+const kNavBarHeight = 62.0;
+
+/// Bottom padding for scrollable content on tab screens. Adds the device's
+/// gesture/home inset on top of [kBottomGap] so nothing is ever clipped behind
+/// the nav bar on tall-inset devices.
+double bottomListGap(BuildContext context) =>
+    kBottomGap + MediaQuery.of(context).padding.bottom;
+
+/// Clearance for floating controls overlaid on a tab screen (e.g. the map's
+/// buttons): the nav bar height + the device inset + one screen margin. Below
+/// this line the nav bar swallows taps.
+double navBarClearance(BuildContext context) =>
+    kNavBarHeight + MediaQuery.of(context).padding.bottom + spacingScreen;
 
 // ─── Typography ──────────────────────────────────────────────────────────────
 TextTheme _candelaTextTheme(Color primary, Color secondary) {
@@ -208,6 +231,18 @@ class CandleTheme {
     );
   }
 }
+
+/// Secondary text and icon colour for the *current* theme.
+///
+/// Always prefer this over the raw [textSecondary]/[textDarkSecondary]
+/// constants inside widgets. Hardcoding [textSecondary] pins the light-theme
+/// colour, which over Candela Night falls to ~2.9:1 contrast — under the 4.5:1
+/// WCAG AA requires — so metadata, hints and chevrons all but disappeared in
+/// dark mode.
+Color secondaryOn(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? textDarkSecondary
+    : textSecondary;
 
 /// Plus Jakarta Sans shorthand. When [color] is null the style inherits the
 /// ambient DefaultTextStyle colour, so it adapts to light/dark automatically.

@@ -25,8 +25,7 @@ Future<bool?> showProposePlanSheet(BuildContext context, {FeedUser? friend}) {
 /// Plans — propose to meet a friend at a place. Replaces the old "Challenges"
 /// concept entirely; the word does not appear anywhere in this surface.
 class PlansScreen extends StatefulWidget {
-  final FeedUser? prefillFriend;
-  const PlansScreen({this.prefillFriend, super.key});
+  const PlansScreen({super.key});
 
   @override
   State<PlansScreen> createState() => _PlansScreenState();
@@ -37,17 +36,13 @@ class _PlansScreenState extends State<PlansScreen>
   late final TabController _tabController;
   late Future<List<Plan>> _incoming;
   late Future<List<Plan>> _outgoing;
+  late Future<List<OpenPlan>> _nearby;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _reload();
-    if (widget.prefillFriend != null) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _openCreate(widget.prefillFriend),
-      );
-    }
   }
 
   @override
@@ -59,11 +54,37 @@ class _PlansScreenState extends State<PlansScreen>
   void _reload() {
     _incoming = ApiService.getIncomingPlans();
     _outgoing = ApiService.getOutgoingPlans();
+    _nearby = _loadNearby();
+  }
+
+  Future<List<OpenPlan>> _loadNearby() async {
+    final position = await LocationService.getCurrentPosition();
+    return ApiService.discoverOpenPlans(
+      lat: position?.latitude ?? fallbackLat,
+      lon: position?.longitude ?? fallbackLon,
+    );
   }
 
   Future<void> _refresh() async {
     setState(_reload);
-    await Future.wait([_incoming, _outgoing]);
+    // Ignore individual failures — each tab surfaces its own error state.
+    await Future.wait([
+      _incoming.catchError((_) => const <Plan>[]),
+      _outgoing.catchError((_) => const <Plan>[]),
+      _nearby.catchError((_) => const <OpenPlan>[]),
+    ]);
+  }
+
+  Future<void> _joinNearby(OpenPlan p) async {
+    HapticFeedback.lightImpact();
+    try {
+      await ApiService.joinPlan(p.planId);
+      if (!mounted) return;
+      showToast(context, 'Te uniste al plan en ${p.placeName}');
+      setState(_reload);
+    } on ApiException catch (e) {
+      if (mounted) showToast(context, e.message);
+    }
   }
 
   Future<void> _accept(Plan p) async {
@@ -122,11 +143,13 @@ class _PlansScreenState extends State<PlansScreen>
             TabBar(
               controller: _tabController,
               labelColor: candelaAmber,
-              unselectedLabelColor: textSecondary,
+              unselectedLabelColor: secondaryOn(context),
               indicatorColor: candelaAmber,
+              dividerColor: Colors.transparent,
               tabs: const [
                 Tab(text: 'Recibidos'),
                 Tab(text: 'Enviados'),
+                Tab(text: 'Cerca'),
               ],
             ),
             Expanded(
@@ -150,6 +173,11 @@ class _PlansScreenState extends State<PlansScreen>
                     onCancel: _cancel,
                     onRefresh: _refresh,
                     onPropose: _openCreate,
+                  ),
+                  _OpenPlanList(
+                    future: _nearby,
+                    onJoin: _joinNearby,
+                    onRefresh: _refresh,
                   ),
                 ],
               ),

@@ -135,4 +135,152 @@ void main() {
       },
     );
   });
+
+  group('session refresh', () {
+    test('a 401 refreshes the access token and retries the request', () async {
+      await TokenStorage.save('expired-tok', refreshToken: 'refresh-1');
+      var loggedOut = false;
+      ApiService.onSessionExpired = () => loggedOut = true;
+
+      final seen = <String>[];
+      ApiService.client = MockClient((req) async {
+        seen.add('${req.method} ${req.url.path}');
+
+        if (req.url.path == '/api/auth/refresh') {
+          expect(jsonDecode(req.body)['refresh_token'], 'refresh-1');
+          return http.Response(
+            jsonEncode({
+              'token': 'fresh-tok',
+              'refresh_token': 'refresh-2',
+              'expires_in': 3600,
+              'user': {'user_id': 'u1', 'username': 'lucho'},
+            }),
+            200,
+          );
+        }
+        // The protected endpoint only accepts the refreshed token.
+        if (req.headers['Authorization'] == 'Bearer fresh-tok') {
+          return http.Response(
+            jsonEncode({'user_id': 'u1', 'username': 'lucho'}),
+            200,
+          );
+        }
+        return http.Response('', 401);
+      });
+
+      final user = await ApiService.getMyProfile();
+
+      expect(user.username, 'lucho');
+      expect(loggedOut, isFalse, reason: 'the session recovered silently');
+      expect(seen, [
+        'GET /api/me', // rejected
+        'POST /api/auth/refresh', // recovered
+        'GET /api/me', // retried
+      ]);
+      // The rotated pair replaced the old one.
+      expect(await TokenStorage.get(), 'fresh-tok');
+      expect(await TokenStorage.getRefresh(), 'refresh-2');
+    });
+
+    test('a rejected refresh token ends the session', () async {
+      await TokenStorage.save('expired-tok', refreshToken: 'revoked');
+      var loggedOut = false;
+      ApiService.onSessionExpired = () => loggedOut = true;
+
+      ApiService.client = MockClient((req) async {
+        if (req.url.path == '/api/auth/refresh') {
+          return http.Response(jsonEncode({'error': 'nope'}), 401);
+        }
+        return http.Response('', 401);
+      });
+
+      await expectLater(
+        ApiService.getMyProfile(),
+        throwsA(isA<SessionExpiredException>()),
+      );
+      expect(loggedOut, isTrue);
+      expect(await TokenStorage.get(), isNull);
+      expect(await TokenStorage.getRefresh(), isNull);
+    });
+
+    test('concurrent 401s share a single refresh', () async {
+      await TokenStorage.save('expired-tok', refreshToken: 'refresh-1');
+
+      var refreshCalls = 0;
+      ApiService.client = MockClient((req) async {
+        if (req.url.path == '/api/auth/refresh') {
+          refreshCalls++;
+          return http.Response(
+            jsonEncode({
+              'token': 'fresh-tok',
+              'refresh_token': 'refresh-2',
+              'expires_in': 3600,
+              'user': {'user_id': 'u1', 'username': 'lucho'},
+            }),
+            200,
+          );
+        }
+        if (req.headers['Authorization'] == 'Bearer fresh-tok') {
+          return http.Response(jsonEncode({'events': []}), 200);
+        }
+        return http.Response('', 401);
+      });
+
+      await Future.wait([
+        ApiService.getFeed(),
+        ApiService.getFeed(),
+        ApiService.getFeed(),
+      ]);
+
+      // Refresh tokens rotate on use: three refreshes would spend three
+      // tokens and invalidate the last two.
+      expect(refreshCalls, 1);
+    });
+  });
+
+  group('feed pagination', () {
+    test('uses the opaque cursor from the API, not a timestamp', () async {
+      await TokenStorage.save('tok123');
+
+      final requested = <String?>[];
+      ApiService.client = MockClient((req) async {
+        requested.add(req.url.queryParameters['cursor']);
+        return http.Response(
+          jsonEncode({
+            'events': [
+              {
+                'checkin_id': 'c1',
+                'timestamp': '2024-06-05T21:30:00Z',
+                'priority_layer': 3,
+                'user': {'user_id': 'u2', 'username': 'ana'},
+                'place': {'place_id': 'p1', 'name': 'Bar'},
+              },
+            ],
+            'next_cursor': 'opaque-token-2',
+          }),
+          200,
+        );
+      });
+
+      final first = await ApiService.getFeed();
+      expect(first.events, hasLength(1));
+      expect(first.nextCursor, 'opaque-token-2');
+      expect(first.hasMore, isTrue);
+
+      await ApiService.getFeed(cursor: first.nextCursor);
+      expect(requested, [null, 'opaque-token-2']);
+    });
+
+    test('a null next_cursor marks the end of the feed', () async {
+      await TokenStorage.save('tok123');
+      ApiService.client = MockClient(
+        (req) async =>
+            http.Response(jsonEncode({'events': [], 'next_cursor': null}), 200),
+      );
+
+      final page = await ApiService.getFeed();
+      expect(page.hasMore, isFalse);
+      expect(page.nextCursor, isNull);
+    });
+  });
 }

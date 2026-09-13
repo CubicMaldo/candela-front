@@ -1,4 +1,5 @@
 import 'dart:ui' show ImageFilter;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_map/flutter_map.dart';
@@ -17,13 +18,33 @@ import 'place_sheet.dart';
 /// places (recent check-in activity) glow amber; everything else fades into
 /// the background. Category chips and a list-view toggle float above the map.
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  /// Current tab index of the surrounding shell. When it flips back to the
+  /// map tab, live data (active friends, open plans) is refreshed.
+  final ValueListenable<int>? activeTab;
+  const MapScreen({this.activeTab, super.key});
 
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 
 const _bquillaCenter = ll.LatLng(fallbackLat, fallbackLon);
+
+/// Gestures the Candela map accepts: pan and zoom, never rotation.
+///
+/// North stays up so place labels — which are drawn as horizontal text — stay
+/// readable, and so a stray two-finger twist can't leave the user with a
+/// tilted map and no way to straighten it: there is no reset-north control.
+///
+/// Both rotation paths have to be closed. [InteractiveFlag.rotate] covers the
+/// two-finger twist; cursor/keyboard rotation (Ctrl+drag on desktop and web)
+/// is a separate option that defaults to *enabled*, so clearing the flag alone
+/// would leave the map rotatable there.
+///
+/// Not a `const`: [CursorKeyboardRotationOptions.disabled] builds a closure.
+InteractionOptions candelaMapInteractions() => InteractionOptions(
+  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+  cursorKeyboardRotationOptions: CursorKeyboardRotationOptions.disabled(),
+);
 
 class _MapScreenState extends State<MapScreen> {
   static const _categories = [
@@ -53,12 +74,65 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _loadLocation(animate: false);
     _activeFriends = _loadActiveFriends();
+    widget.activeTab?.addListener(_onShellTabChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.activeTab?.removeListener(_onShellTabChanged);
+    super.dispose();
+  }
+
+  void _onShellTabChanged() {
+    if (widget.activeTab?.value == 0) _refreshLiveData();
+  }
+
+  /// Re-fetches the live layers (friends currently checked in, open plans)
+  /// without touching the heavier places load.
+  void _refreshLiveData() {
+    if (!mounted) return;
+    // Braces, not an arrow: the closure must not return the assigned Future.
+    setState(() {
+      _activeFriends = _loadActiveFriends();
+    });
+    final c = _referenceCenter;
+    _loadOpenPlans(c.latitude, c.longitude);
   }
 
   Future<void> _loadOpenPlans(double lat, double lon) async {
     try {
-      final plans = await ApiService.discoverOpenPlans(lat: lat, lon: lon);
-      if (mounted) setState(() => _openPlans = plans);
+      // Discover excludes the user's own plans, so merge in their pending open
+      // plans from "outgoing" — otherwise a freshly created plan is invisible
+      // on the map and re-creating it hits the API's duplicate error.
+      final results = await Future.wait([
+        ApiService.discoverOpenPlans(lat: lat, lon: lon),
+        ApiService.getOutgoingPlans(),
+      ]);
+      final discovered = results[0] as List<OpenPlan>;
+      final outgoing = results[1] as List<Plan>;
+      final places = await (_places ?? Future.value(const <Place>[]));
+      final placesById = {for (final p in places) p.placeId: p};
+      final own = <OpenPlan>[
+        for (final plan in outgoing)
+          if (plan.isOpen && plan.status == PlanStatus.pending)
+            if (placesById[plan.place.placeId] case final place?)
+              OpenPlan(
+                planId: plan.planId,
+                visibility: plan.visibility,
+                message: plan.message,
+                deadlineHours: plan.deadlineHours,
+                deadlineAt: plan.deadlineAt,
+                creator: plan.creator,
+                placeId: place.placeId,
+                placeName: place.name,
+                placeCategory: place.category,
+                lat: place.lat,
+                lon: place.lon,
+                participantCount: plan.participantCount,
+                isMine: true,
+              ),
+      ];
+      if (mounted) setState(() => _openPlans = [...own, ...discovered]);
     } catch (_) {
       // Non-fatal: the map still works without plan pins.
     }
@@ -94,10 +168,12 @@ class _MapScreenState extends State<MapScreen> {
   /// (one entry per friend, most recent first). There is no dedicated
   /// "active friends" endpoint, so we reuse the feed like the profile does.
   Future<List<CheckInEvent>> _loadActiveFriends() async {
-    final feed = await ApiService.getFeed(limit: 60);
+    // 50 is the server's ceiling on this endpoint; asking for more is silently
+    // clamped, so request what we can actually get.
+    final page = await ApiService.getFeed(limit: 50);
     final seen = <String>{};
     final result = <CheckInEvent>[];
-    for (final e in feed) {
+    for (final e in page.events) {
       if (!e.user.isFriend) continue;
       if (seen.add(e.user.userId)) result.add(e);
     }
@@ -224,12 +300,12 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 Positioned(
                   right: spacingScreen,
-                  bottom: spacingScreen + 64,
+                  bottom: navBarClearance(context),
                   child: _MyLocationButton(onTap: _onMyLocationTap),
                 ),
                 Positioned(
                   right: spacingScreen,
-                  bottom: spacingScreen + 64 + 52,
+                  bottom: navBarClearance(context) + 52,
                   child: FutureBuilder<List<CheckInEvent>>(
                     future: _activeFriends,
                     builder: (context, snap) {
@@ -246,7 +322,7 @@ class _MapScreenState extends State<MapScreen> {
               // Bottom-left, per spec §7.5.
               Positioned(
                 left: spacingScreen,
-                bottom: spacingScreen + 64,
+                bottom: navBarClearance(context),
                 child: _ListToggleButton(
                   active: _listView,
                   onTap: () => setState(() => _listView = !_listView),
@@ -291,6 +367,7 @@ class _Map extends StatelessWidget {
       options: MapOptions(
         initialCenter: userLatLng ?? _bquillaCenter,
         initialZoom: userLatLng != null ? 15 : 14,
+        interactionOptions: candelaMapInteractions(),
       ),
       children: [
         TileLayer(
@@ -309,22 +386,33 @@ class _Map extends StatelessWidget {
         ),
         MarkerLayer(
           markers: [
+            // One combined marker per place: the label carries both the place
+            // name and (when there are open plans) a sage plan chip, so the
+            // two never overlap each other on the map.
             for (final place in places)
               Marker(
                 point: ll.LatLng(place.lat, place.lon),
-                width: place.isActive ? 120 : 14,
-                height: place.isActive ? 64 : 14,
-                alignment: place.isActive
+                width:
+                    (place.isActive || plansByPlace.containsKey(place.placeId))
+                    ? 176
+                    : 14,
+                height:
+                    (place.isActive || plansByPlace.containsKey(place.placeId))
+                    ? 70
+                    : 14,
+                alignment:
+                    (place.isActive || plansByPlace.containsKey(place.placeId))
                     ? Alignment.bottomCenter
                     : Alignment.center,
                 child: _PlacePin(
                   place: place,
-                  onTap: place.isActive
-                      ? () => showPlaceSheet(context, place)
-                      : null,
+                  plans: plansByPlace.remove(place.placeId) ?? const [],
+                  onTap: () => showPlaceSheet(context, place),
+                  onTapPlans: onTapPlans,
                 ),
               ),
-            // Plan pins float above the place point so they don't hide it.
+            // Plans at places outside the current (filtered) list still get
+            // their own standalone pin.
             for (final group in plansByPlace.values)
               Marker(
                 point: ll.LatLng(group.first.lat, group.first.lon),
@@ -508,26 +596,38 @@ class _ActiveFriendsSheet extends StatelessWidget {
           children: [
             Text('Tu gente en candela ahora', style: textTheme.titleSmall),
             const SizedBox(height: 12),
-            ...friends.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  onTap: () => onTapPlace(e.place.placeId),
-                  leading: UserAvatar(username: e.user.username, size: 44),
-                  title: Text(
-                    '@${e.user.username}',
-                    style: textTheme.bodyLarge,
-                  ),
-                  subtitle: Text(
-                    'en ${e.place.name}',
-                    style: textTheme.bodySmall?.copyWith(color: textSecondary),
-                  ),
-                  trailing: Icon(
-                    Icons.chevron_right_rounded,
-                    color: textSecondary,
-                  ),
-                ),
+            // Scrollable so a long list never overflows the sheet.
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final e in friends)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        onTap: () => onTapPlace(e.place.placeId),
+                        leading: UserAvatar(
+                          username: e.user.username,
+                          size: 44,
+                        ),
+                        title: Text(
+                          '@${e.user.username}',
+                          style: textTheme.bodyLarge,
+                        ),
+                        subtitle: Text(
+                          'en ${e.place.name}',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: secondaryOn(context),
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          color: secondaryOn(context),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -564,68 +664,26 @@ class _OpenPlansSheet extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Únete a un plan abierto aquí.',
-              style: textTheme.bodySmall?.copyWith(color: textSecondary),
+              style: textTheme.bodySmall?.copyWith(color: secondaryOn(context)),
             ),
             const SizedBox(height: 14),
-            ...plans.map(
-              (p) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: AppCard(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Con @${p.creator.username}',
-                              style: textTheme.bodyLarge,
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              '${_goingLabel(p.participantCount)} · ${countdownLabel(p.timeLeft)}',
-                              style: textTheme.bodySmall?.copyWith(
-                                color: textSecondary,
-                              ),
-                            ),
-                            if (p.message.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                p.message,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: textTheme.bodySmall,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: candelaAmber,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(radiusPill),
-                          ),
-                        ),
-                        onPressed: () => onJoin(p),
-                        child: const Text('Unirme'),
-                      ),
-                    ],
-                  ),
-                ),
+            // Scrollable so many plans never overflow the sheet.
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final p in plans)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: OpenPlanCard(plan: p, onJoin: () => onJoin(p)),
+                    ),
+                ],
               ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  String _goingLabel(int count) {
-    final n = count < 1 ? 1 : count;
-    return n == 1 ? '1 va' : '$n van';
   }
 }
 
@@ -708,9 +766,9 @@ class _PlacesListView extends StatelessWidget {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      '${p.category} · ${_formatDistance(_distanceMeters(p))}',
+                                      '${categoryLabel(p.category)} · ${distanceLabel(_distanceMeters(p))}',
                                       style: textTheme.bodySmall?.copyWith(
-                                        color: textSecondary,
+                                        color: secondaryOn(context),
                                       ),
                                     ),
                                     if (p.isActive &&
@@ -732,7 +790,7 @@ class _PlacesListView extends StatelessWidget {
                               Icon(
                                 Icons.chevron_right_rounded,
                                 size: 20,
-                                color: textSecondary,
+                                color: secondaryOn(context),
                               ),
                             ],
                           ),
@@ -752,34 +810,40 @@ class _PlacesListView extends StatelessWidget {
     place.lat,
     place.lon,
   );
-
-  String _formatDistance(double meters) {
-    if (meters < 1000) return '${meters.round()} m';
-    return '${(meters / 1000).toStringAsFixed(1)} km';
-  }
 }
 
 // ─── Place pin ────────────────────────────────────────────────────────────────
+/// Combined marker for a place: one label pill holding the place name and —
+/// when there are open plans there — an attached sage plan chip, so the plan
+/// badge never covers the place name. The teardrop is amber when the place is
+/// live; sage when it only has open plans.
 class _PlacePin extends StatelessWidget {
   final Place place;
+  final List<OpenPlan> plans;
   final VoidCallback? onTap;
-  const _PlacePin({required this.place, required this.onTap});
+  final void Function(List<OpenPlan>)? onTapPlans;
+  const _PlacePin({
+    required this.place,
+    this.plans = const [],
+    required this.onTap,
+    this.onTapPlans,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Inactive places: a small, quiet dot so attention stays on what's live.
-    if (!place.isActive) {
+    final hasPlans = plans.isNotEmpty;
+    // Quiet places without plans: a small dot so attention stays on what's live.
+    if (!place.isActive && !hasPlans) {
       return Container(
         width: 10,
         height: 10,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: textSecondary.withValues(alpha: 0.55),
+          color: secondaryOn(context).withValues(alpha: 0.55),
           border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
         ),
       );
     }
-    // Active places: amber teardrop with the place name.
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -787,25 +851,71 @@ class _PlacePin extends StatelessWidget {
         children: [
           Container(
             margin: const EdgeInsets.only(bottom: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.fromLTRB(8, 2, 4, 2),
             decoration: BoxDecoration(
               color: candelaNight.withValues(alpha: 0.78),
               borderRadius: BorderRadius.circular(radiusPill),
               border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
-            child: Text(
-              place.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: hasPlans ? 6 : 4),
+                    child: Text(
+                      place.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                if (hasPlans)
+                  GestureDetector(
+                    onTap: () => onTapPlans?.call(plans),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: candelaSage,
+                        borderRadius: BorderRadius.circular(radiusPill),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.calendar_today_rounded,
+                            size: 11,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            plans.length == 1 ? 'Plan' : '${plans.length}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 11,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           CustomPaint(
             size: const Size(28, 36),
-            painter: _TeardropPainter(color: candelaAmber),
+            painter: _TeardropPainter(
+              color: place.isActive ? candelaAmber : candelaSage,
+            ),
           ),
         ],
       ),

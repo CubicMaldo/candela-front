@@ -78,4 +78,65 @@ void main() {
       expect(user.friendsCount, 3);
     });
   });
+
+  group('RankingResponse.fromJson', () {
+    // The API sends user_rank as a full entry object. Parsing it as a number
+    // threw, and the throw was swallowed upstream, so the profile always said
+    // "aún no tienes posición".
+    test('reads user_rank when it is an entry object', () {
+      final r = RankingResponse.fromJson({
+        'rankings': [
+          {
+            'rank': 1,
+            'user_id': 'u2',
+            'username': 'carlos',
+            'points_total': 860,
+          },
+        ],
+        'total': 1,
+        'user_rank': {
+          'rank': 3,
+          'user_id': 'u1',
+          'username': 'ana',
+          'badge_level': 'Parroquiano',
+          'points_total': 1240,
+        },
+      });
+
+      expect(r.entries, hasLength(1));
+      expect(r.userRank, 3);
+      expect(r.userEntry?.username, 'ana');
+      expect(r.userEntry?.pointsTotal, 1240);
+    });
+
+    test('a null user_rank means no position, not an error', () {
+      final r = RankingResponse.fromJson({
+        'rankings': const [],
+        'user_rank': null,
+        'user_rank_reason': 'ranking_opt_in_disabled',
+      });
+
+      expect(r.userRank, isNull);
+      expect(r.userEntry, isNull);
+      expect(r.userRankReason, 'ranking_opt_in_disabled');
+    });
+
+    test(
+      'an unexpected user_rank shape degrades to null instead of throwing',
+      () {
+        expect(
+          () =>
+              RankingResponse.fromJson({'rankings': const [], 'user_rank': 7}),
+          returnsNormally,
+        );
+        expect(
+          RankingResponse.fromJson({
+            'rankings': const [],
+            'user_rank': 7,
+          }).userRank,
+          isNull,
+        );
+      },
+    );
+  });
 }

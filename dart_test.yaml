@@ -1,0 +1,11 @@
+# Tests tagged `live` talk to a running Candela API instead of a mock, so they
+# are skipped by default and opted into explicitly:
+#
+#   flutter test --run-skipped -t live \
+#     --dart-define=API_BASE_URL=http://localhost:8080
+#
+# They cover what a mocked 401 cannot: that a genuinely expired JWT is refreshed
+# transparently against the real server.
+tags:
+  live:
+    skip: "needs a running API — see dart_test.yaml"

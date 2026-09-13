@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 import '../services/google_signin_service.dart';
+import '../app/widgets.dart' show showToast;
 import 'widgets.dart';
 import 'google_flow_button.dart';
 import 'join_screen.dart';
@@ -72,11 +73,8 @@ class WelcomeScreen extends StatelessWidget {
                 const AuthDivider(),
                 const SizedBox(height: 20),
                 Builder(
-                  builder: (ctx) => GoogleFlowButton(
-                    onError: (msg) => ScaffoldMessenger.of(
-                      ctx,
-                    ).showSnackBar(SnackBar(content: Text(msg))),
-                  ),
+                  builder: (ctx) =>
+                      GoogleFlowButton(onError: (msg) => showToast(ctx, msg)),
                 ),
               ],
             ],

@@ -4,6 +4,7 @@ import '../theme.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../app/home_shell.dart';
+import '../app/widgets.dart' show CandelaBackButton;
 import 'widgets.dart';
 
 const _underageMessage = 'Pronto Candela estará disponible para ti.';
@@ -84,7 +85,7 @@ class _GoogleCompleteScreenState extends State<GoogleCompleteScreen> {
         username: _usernameCtrl.text.trim(),
         birthDate: _formatBirthDate(birthDate),
       );
-      await TokenStorage.save(result.token);
+      await TokenStorage.saveSession(result);
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
@@ -121,7 +122,7 @@ class _GoogleCompleteScreenState extends State<GoogleCompleteScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const CandelaBackButton(),
+              const CandelaBackButton(dark: true),
               const SizedBox(height: 28),
               Text(
                 'Ya casi estás',

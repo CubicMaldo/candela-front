@@ -5,9 +5,16 @@
 /// constant, not hardcoded per screen").
 library;
 
-/// Base URL for all `/api/...` requests. `10.0.2.2` is the host loopback as
-/// seen from the Android emulator.
-const String apiBaseUrl = 'http://10.0.2.2:8080';
+/// Base URL for all `/api/...` requests.
+///
+/// Override per build with `--dart-define=API_BASE_URL=https://api.example.com`.
+/// The default is the host loopback as seen from the Android emulator, which is
+/// only reachable there — a release build must always pass this define, and
+/// must point at `https`, since Android blocks cleartext traffic by default.
+const String apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://10.0.2.2:8080',
+);
 
 /// Default network timeout applied to every HTTP request.
 const Duration apiTimeout = Duration(seconds: 15);
