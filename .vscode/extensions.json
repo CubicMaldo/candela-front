@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "Dart-Code.flutter",
+    "Dart-Code.dart-code"
+  ],
+  "unwantedRecommendations": [
+    "redhat.java",
+    "vscjava.vscode-gradle",
+    "oracle.oracle-java",
+    "vscjava.vscode-java-pack",
+    "vscjava.vscode-java-dependency"
+  ]
+}
+

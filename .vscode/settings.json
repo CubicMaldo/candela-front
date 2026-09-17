@@ -1,0 +1,42 @@
+{
+  // Exclusiones para el vigilante de archivos (File Watcher)
+  // Evita que VS Code consuma CPU y RAM vigilando miles de archivos temporales generados
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/.dart_tool/**": true,
+    "**/build/**": true,
+    "**/android/.gradle/**": true,
+    "**/android/app/build/**": true,
+    "**/android/build/**": true,
+    "**/.idea/**": true,
+    "**/.vs/**": true
+  },
+
+  // Exclusiones en bsquedas rpidas (Ctrl+P / Search)
+  "search.exclude": {
+    "**/build": true,
+    "**/.dart_tool": true,
+    "**/android/.gradle": true,
+    "**/android/build": true,
+    "**/.idea": true,
+    "**/.vs": true
+  },
+
+  // Desactivar activacin automtica de servidores Java y Gradle en este workspace de Flutter
+  "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.autobuild.enabled": false,
+  "java.server.launchMode": "LightWeight",
+  "gradle.autoDetect": "off",
+  "gradle.enableBuildServer": false,
+  "gradle.nestedProjects": false,
+  "gradle.javaDebug": false,
+
+  // Optimizaciones de Dart / Flutter en VS Code
+  "dart.autoImportCompletions": true,
+  "dart.warnWhenEditingFilesOutsideWorkspace": true,
+  "dart.notifyCoworkersForAnalytics": false
+}
+
