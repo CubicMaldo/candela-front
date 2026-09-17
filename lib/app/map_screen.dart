@@ -362,6 +362,7 @@ class _Map extends StatelessWidget {
     // Minimalist Carto basemaps — Positron (light) / Dark Matter (dark) — so the
     // map follows the app theme and keeps the focus on places and events.
     final basemap = isDark ? 'dark_all' : 'light_all';
+    final cartoKeyQuery = cartoApiKey.isNotEmpty ? '?key=$cartoApiKey' : '';
     return FlutterMap(
       mapController: controller,
       options: MapOptions(
@@ -372,7 +373,7 @@ class _Map extends StatelessWidget {
       children: [
         TileLayer(
           urlTemplate:
-              'https://{s}.basemaps.cartocdn.com/$basemap/{z}/{x}/{y}{r}.png',
+              'https://{s}.basemaps.cartocdn.com/$basemap/{z}/{x}/{y}{r}.png$cartoKeyQuery',
           subdomains: const ['a', 'b', 'c', 'd'],
           retinaMode: RetinaMode.isHighDensity(context),
           userAgentPackageName: 'com.candela.app',

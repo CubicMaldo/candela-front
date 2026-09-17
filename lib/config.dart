@@ -34,3 +34,10 @@ const double fallbackLon = -74.7813;
 ///  2. Create an OAuth client "Android" with the app's package name and the
 ///     debug/release SHA-1 — no value to copy here; it authorizes the device.
 const String googleServerClientId = '';
+
+/// CARTO basemap API key for raster tile requests.
+///
+/// Injected via `--dart-define=CARTO_API_KEY=...` or `--dart-define-from-file=.env.json`.
+/// Kept out of version control to avoid exposing credentials.
+const String cartoApiKey = String.fromEnvironment('CARTO_API_KEY');
+
