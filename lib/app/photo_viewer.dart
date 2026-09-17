@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../models.dart';
+import 'report_dialog.dart';
+import 'user_profile_sheet.dart';
 
 /// Opens a check-in photo full screen over Candela Night, with pinch-to-zoom
 /// and the same minimal metadata the feed card shows.
@@ -70,10 +72,49 @@ class _PhotoViewerScreen extends StatelessWidget {
                             Icons.close_rounded,
                             color: Colors.white,
                             size: 22,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Material(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => showReportDialog(
+                            context,
+                            targetType: 'PHOTO',
+                            targetId: event.checkinId,
+                          ),
+                          child: const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Icon(
+                              Icons.flag_outlined,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                           ),
                         ),
                       ),
                     ),
+                      Material(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => Navigator.pop(context),
+                          child: const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const Spacer(),
                   Align(
@@ -86,6 +127,17 @@ class _PhotoViewerScreen extends StatelessWidget {
                           '@${event.user.username}',
                           style: textTheme.labelMedium?.copyWith(
                             color: Colors.white,
+                        GestureDetector(
+                          onTap: () => showUserProfileSheet(
+                            context,
+                            event.user.username,
+                          ),
+                          child: Text(
+                            '@${event.user.username}',
+                            style: textTheme.labelMedium?.copyWith(
+                              color: Colors.white,
+                              decoration: TextDecoration.underline,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 2),

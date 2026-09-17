@@ -8,6 +8,7 @@ import '../app/widgets.dart' show CandelaBackButton;
 import 'widgets.dart';
 
 const _underageMessage = 'Pronto Candela estará disponible para ti.';
+const _underageMessage = 'Debes ser mayor de 18 años para usar Candela.';
 
 class JoinScreen extends StatefulWidget {
   const JoinScreen({super.key});

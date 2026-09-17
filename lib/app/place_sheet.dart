@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import 'widgets.dart';
 import 'checkin_screen.dart';
 import 'photo_viewer.dart';
+import 'report_dialog.dart';
 
 /// Opens the place detail as a draggable bottom sheet — header info, follow
 /// button, a horizontal strip of recent check-in photos, and (when eligible)
@@ -119,6 +120,22 @@ class _PlaceSheetState extends State<_PlaceSheet> {
               _EventStrip(future: _events),
               const SizedBox(height: 24),
               if (_place.isActive) _CheckInCta(place: _place),
+              const SizedBox(height: 12),
+              Center(
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: secondaryOn(context),
+                  ),
+                  onPressed: () => showReportDialog(
+                    context,
+                    targetType: 'PLACE',
+                    targetId: _place.placeId,
+                    targetName: _place.name,
+                  ),
+                  icon: const Icon(Icons.flag_outlined, size: 16),
+                  label: const Text('Denunciar este lugar'),
+                ),
+              ),
             ],
           ),
         );

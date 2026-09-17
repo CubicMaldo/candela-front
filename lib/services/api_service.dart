@@ -82,23 +82,52 @@ class ApiService {
     }();
   }
 
+  /// Sanitizes MinIO presigned URLs for local testing / Android emulator
+  /// (mapping localhost:9000 or minio:9000 to 10.0.2.2:9000 per FRONTEND_GUIDE.md §3 & §12).
+  static String sanitizeUploadUrl(String url) {
+    var sanitized = url;
+    if (sanitized.contains('localhost:9000')) {
+      sanitized = sanitized.replaceAll('localhost:9000', '10.0.2.2:9000');
+    }
+    if (sanitized.contains('minio:9000')) {
+      sanitized = sanitized.replaceAll('minio:9000', '10.0.2.2:9000');
+    }
+    return sanitized;
+  }
+
   static Future<dynamic> _handle(http.Response res, {bool auth = true}) async {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return res.body.isEmpty ? null : jsonDecode(res.body);
     }
+    final body = _tryDecode(res.body);
+    final errorStr = body?['error'] as String? ?? '';
+
     // A 401 that survived the refresh-and-retry in _send means the session is
     // genuinely over. A 401 on an unauthenticated endpoint (e.g. login with
     // wrong credentials) is just a regular API error to surface.
     if (res.statusCode == 401 && auth) {
       await TokenStorage.clear();
       onSessionExpired?.call();
+      if (errorStr.contains('account no longer active')) {
+        throw const ApiException(
+          message: 'Tu cuenta ha sido eliminada.',
+          statusCode: 401,
+        );
+      }
       throw const SessionExpiredException();
     }
     final body = _tryDecode(res.body);
+
     final msg =
         (body?['error'] as String?) ??
         (res.statusCode == 401
             ? 'Correo o contraseña incorrectos.'
+            : res.statusCode == 403
+            ? 'Tu cuenta está suspendida. Escríbenos si crees que es un error.'
+            : res.statusCode == 404
+            ? 'Usuario no encontrado.'
+            : res.statusCode == 422
+            ? 'No fue posible completar la solicitud. Verifica los datos ingresados.'
             : 'Algo salió mal. Inténtalo de nuevo en un momento.');
     throw ApiException(message: msg, statusCode: res.statusCode);
   }
@@ -115,6 +144,7 @@ class ApiService {
   /// server rejects it. The access token lives an hour, so without this the
   /// user is thrown back to the login screen every hour — potentially in the
   /// middle of a check-in.
+  /// server rejects it.
   static Future<dynamic> _send(
     Future<http.Response> Function(Map<String, String> headers) request, {
     bool auth = true,
@@ -122,6 +152,18 @@ class ApiService {
     var res = await request(await _headers(auth: auth)).timeout(apiTimeout);
 
     if (res.statusCode == 401 && auth) {
+      final body = _tryDecode(res.body);
+      final errorStr = body?['error'] as String? ?? '';
+      // If the account was deleted, do not attempt to refresh with revoked tokens
+      if (errorStr.contains('account no longer active')) {
+        await TokenStorage.clear();
+        onSessionExpired?.call();
+        throw const ApiException(
+          message: 'Tu cuenta ha sido eliminada.',
+          statusCode: 401,
+        );
+      }
+
       if (await _refreshSession()) {
         res = await request(await _headers(auth: auth)).timeout(apiTimeout);
       }
@@ -293,9 +335,11 @@ class ApiService {
     required String checkinNonce,
     required String photoKey,
     required DateTime capturedAt,
+    DateTime? capturedAt,
     bool photoIsPermanent = false,
   }) async {
     final j = await _post('/api/places/$placeId/checkin/confirm', {
+    final payload = <String, dynamic>{
       'checkin_nonce': checkinNonce,
       'photo_key': photoKey,
       // The API requires the capture timestamp and rejects photos older than
@@ -303,6 +347,11 @@ class ApiService {
       'exif_timestamp': capturedAt.toUtc().toIso8601String(),
       'photo_is_permanent': photoIsPermanent,
     });
+    };
+    if (capturedAt != null) {
+      payload['exif_timestamp'] = capturedAt.toUtc().toIso8601String();
+    }
+    final j = await _post('/api/places/$placeId/checkin/confirm', payload);
     return ConfirmCheckInResult.fromJson(_asMap(j));
   }
 
@@ -343,8 +392,11 @@ class ApiService {
     }
     final j = await _get('/api/feed$query');
     final m = _asMap(j);
+    final rawEvents = (m['events'] as List? ?? const []);
     return FeedPage(
       events: (m['events'] as List? ?? const [])
+      events: rawEvents
+          .where((e) => e is Map && (e['type'] == null || e['type'] == 'checkin'))
           .map((e) => CheckInEvent.fromJson(e as Map<String, dynamic>))
           .toList(),
       nextCursor: m['next_cursor'] as String?,

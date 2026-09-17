@@ -303,13 +303,17 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
 class _CameraCaptureStep extends StatefulWidget {
   final Place place;
   final Position position;
+  final CheckInInitiation initiation;
   final ValueChanged<XFile> onCaptured;
   final VoidCallback onCancel;
+  final VoidCallback? onTimeout;
   const _CameraCaptureStep({
     required this.place,
     required this.position,
+    required this.initiation,
     required this.onCaptured,
     required this.onCancel,
+    this.onTimeout,
   });
 
   @override
@@ -321,11 +325,22 @@ class _CameraCaptureStepState extends State<_CameraCaptureStep> {
   Future<void>? _init;
   bool _capturing = false;
   String? _error;
+  int _secondsRemaining = 90;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
     super.initState();
     _setup();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_secondsRemaining <= 1) {
+        timer.cancel();
+        widget.onTimeout?.call();
+      } else {
+        setState(() => _secondsRemaining--);
+      }
+    });
   }
 
   Future<void> _setup() async {
@@ -376,6 +391,7 @@ class _CameraCaptureStepState extends State<_CameraCaptureStep> {
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _controller?.dispose();
     super.dispose();
   }
@@ -444,6 +460,14 @@ class _CameraCaptureStepState extends State<_CameraCaptureStep> {
                       ),
                       const SizedBox(height: 8),
                       _AccuracyPill(accuracy: widget.position.accuracy),
+                      Wrap(
+                        spacing: 8,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          _AccuracyPill(accuracy: widget.position.accuracy),
+                          _TimerPill(secondsRemaining: _secondsRemaining),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -584,16 +608,58 @@ class _AccuracyPill extends StatelessWidget {
   }
 }
 
+// ─── Check-in 90-second countdown indicator ──────────────────────────────────
+class TimerPill extends StatelessWidget {
+  final int secondsRemaining;
+  const TimerPill({super.key, required this.secondsRemaining});
+
+  @override
+  Widget build(BuildContext context) {
+    final isUrgent = secondsRemaining <= 15;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isUrgent
+            ? candelaDanger.withValues(alpha: 0.85)
+            : Colors.black.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(radiusPill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.timer_outlined,
+            size: 15,
+            color: isUrgent ? Colors.white : candelaAmber,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '${secondsRemaining}s restantes',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+typedef _TimerPill = TimerPill;
+
 // ─── Step 3 — Confirm & publish ───────────────────────────────────────────────
 class _ConfirmStep extends StatefulWidget {
   final Place place;
   final Position position;
+  final CheckInInitiation initiation;
   final XFile photo;
   final DateTime capturedAt;
   final VoidCallback onRetake;
   const _ConfirmStep({
     required this.place,
     required this.position,
+    required this.initiation,
     required this.photo,
     required this.capturedAt,
     required this.onRetake,
@@ -621,9 +687,12 @@ class _ConfirmStepState extends State<_ConfirmStep> {
         lat: position.latitude,
         lon: position.longitude,
       );
+      final uploadUrl =
+          ApiService.sanitizeUploadUrl(widget.initiation.uploadUrl);
       final bytes = await widget.photo.readAsBytes();
       final uploadRes = await http.put(
         Uri.parse(initiation.uploadUrl),
+        Uri.parse(uploadUrl),
         headers: const {'Content-Type': 'image/jpeg'},
         body: bytes,
       );
@@ -637,6 +706,8 @@ class _ConfirmStepState extends State<_ConfirmStep> {
         placeId: widget.place.placeId,
         checkinNonce: initiation.checkinNonce,
         photoKey: initiation.photoKey,
+        checkinNonce: widget.initiation.checkinNonce,
+        photoKey: widget.initiation.photoKey,
         capturedAt: widget.capturedAt,
         photoIsPermanent: _permanent,
       );

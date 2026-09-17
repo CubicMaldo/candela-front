@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 // Data models for the Candela API (MVP 1.0). Field names mirror the JSON
 // response keys documented in CANDELA_API_CHANGELOG.md sections 4-6.
 
@@ -95,9 +97,14 @@ int _parseInt(Object? v) => (v as num?)?.toInt() ?? 0;
 
 // ─── User (own profile — GET /api/me) ────────────────────────────────────────
 class User {
+// ─── MyProfile / User (own profile — GET /api/me) ───────────────────────────
+class MyProfile {
   final String userId;
   final String email;
   final String username;
+  final DateTime? birthDate;
+  final int age;
+  final bool isProtected;
   final PrivacyMode privacyMode;
   final String accountStatus;
   final int pointsTotal;
@@ -106,6 +113,8 @@ class User {
   final int streakWeeksCurrent;
   final int streakWeeksMax;
   final int streakWeekCheckins;
+  final DateTime? streakWeekStart;
+  final DateTime? streakLastCheckin;
   final bool rankingOptIn;
   final int checkInCount;
   final int friendsCount;
@@ -114,9 +123,13 @@ class User {
   final DateTime updatedAt;
 
   const User({
+  const MyProfile({
     required this.userId,
     required this.email,
     required this.username,
+    this.birthDate,
+    this.age = 0,
+    this.isProtected = false,
     required this.privacyMode,
     required this.accountStatus,
     required this.pointsTotal,
@@ -125,6 +138,8 @@ class User {
     required this.streakWeeksCurrent,
     required this.streakWeeksMax,
     required this.streakWeekCheckins,
+    this.streakWeekStart,
+    this.streakLastCheckin,
     required this.rankingOptIn,
     required this.checkInCount,
     required this.friendsCount,
@@ -134,9 +149,13 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> j) => User(
+  factory MyProfile.fromJson(Map<String, dynamic> j) => MyProfile(
     userId: (j['user_id'] ?? '').toString(),
     email: (j['email'] ?? '').toString(),
     username: (j['username'] ?? '').toString(),
+    birthDate: _parseDateOrNull(j['birth_date']),
+    age: _parseInt(j['age']),
+    isProtected: j['is_protected'] == true,
     privacyMode: PrivacyMode.from(j['privacy_mode']),
     accountStatus: (j['account_status'] ?? '').toString(),
     pointsTotal: _parseInt(j['points_total']),
@@ -145,6 +164,8 @@ class User {
     streakWeeksCurrent: _parseInt(j['streak_weeks_current']),
     streakWeeksMax: _parseInt(j['streak_weeks_max']),
     streakWeekCheckins: _parseInt(j['streak_week_checkins']),
+    streakWeekStart: _parseDateOrNull(j['streak_week_start']),
+    streakLastCheckin: _parseDateOrNull(j['streak_last_checkin']),
     rankingOptIn: j['ranking_opt_in'] == true,
     checkInCount: _parseInt(j['check_in_count']),
     friendsCount: _parseInt(j['friends_count']),
@@ -152,7 +173,84 @@ class User {
     createdAt: _parseDate(j['created_at']),
     updatedAt: _parseDate(j['updated_at']),
   );
+
+  Map<String, dynamic> toJson() => {
+    'user_id': userId,
+    'email': email,
+    'username': username,
+    if (birthDate != null) 'birth_date': birthDate!.toUtc().toIso8601String(),
+    'age': age,
+    'is_protected': isProtected,
+    'privacy_mode': privacyMode.raw,
+    'account_status': accountStatus,
+    'points_total': pointsTotal,
+    'points_season': pointsSeason,
+    'badge_level': badgeLevel.label,
+    'streak_weeks_current': streakWeeksCurrent,
+    'streak_weeks_max': streakWeeksMax,
+    'streak_week_checkins': streakWeekCheckins,
+    if (streakWeekStart != null)
+      'streak_week_start': streakWeekStart!.toUtc().toIso8601String(),
+    if (streakLastCheckin != null)
+      'streak_last_checkin': streakLastCheckin!.toUtc().toIso8601String(),
+    'ranking_opt_in': rankingOptIn,
+    'check_in_count': checkInCount,
+    'friends_count': friendsCount,
+    'completed_plans_count': completedPlansCount,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+  };
+
+  MyProfile copyWith({
+    String? userId,
+    String? email,
+    String? username,
+    DateTime? birthDate,
+    int? age,
+    bool? isProtected,
+    PrivacyMode? privacyMode,
+    String? accountStatus,
+    int? pointsTotal,
+    int? pointsSeason,
+    BadgeLevel? badgeLevel,
+    int? streakWeeksCurrent,
+    int? streakWeeksMax,
+    int? streakWeekCheckins,
+    DateTime? streakWeekStart,
+    DateTime? streakLastCheckin,
+    bool? rankingOptIn,
+    int? checkInCount,
+    int? friendsCount,
+    int? completedPlansCount,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => MyProfile(
+    userId: userId ?? this.userId,
+    email: email ?? this.email,
+    username: username ?? this.username,
+    birthDate: birthDate ?? this.birthDate,
+    age: age ?? this.age,
+    isProtected: isProtected ?? this.isProtected,
+    privacyMode: privacyMode ?? this.privacyMode,
+    accountStatus: accountStatus ?? this.accountStatus,
+    pointsTotal: pointsTotal ?? this.pointsTotal,
+    pointsSeason: pointsSeason ?? this.pointsSeason,
+    badgeLevel: badgeLevel ?? this.badgeLevel,
+    streakWeeksCurrent: streakWeeksCurrent ?? this.streakWeeksCurrent,
+    streakWeeksMax: streakWeeksMax ?? this.streakWeeksMax,
+    streakWeekCheckins: streakWeekCheckins ?? this.streakWeekCheckins,
+    streakWeekStart: streakWeekStart ?? this.streakWeekStart,
+    streakLastCheckin: streakLastCheckin ?? this.streakLastCheckin,
+    rankingOptIn: rankingOptIn ?? this.rankingOptIn,
+    checkInCount: checkInCount ?? this.checkInCount,
+    friendsCount: friendsCount ?? this.friendsCount,
+    completedPlansCount: completedPlansCount ?? this.completedPlansCount,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
+
+typedef User = MyProfile;
 
 // ─── PublicProfile (GET /api/users/:username) ────────────────────────────────
 class PublicProfile {
@@ -192,61 +290,92 @@ class PublicProfile {
 class Place {
   final String placeId;
   final String name;
+  final String? description;
   final String category;
   final double lat;
   final double lon;
   final int geofenceMeters;
+  final String? minorSuitability;
   final bool isVerified;
   final bool isActive;
   final bool isFollowed;
   final int activeCheckinsCount;
   final DateTime? lastCheckinAt;
   final int followerCount;
+  final double? distance;
 
   const Place({
     required this.placeId,
     required this.name,
+    this.description,
     required this.category,
     required this.lat,
     required this.lon,
     required this.geofenceMeters,
+    this.minorSuitability,
     required this.isVerified,
     required this.isActive,
     required this.isFollowed,
     required this.activeCheckinsCount,
     this.lastCheckinAt,
     required this.followerCount,
+    this.distance,
   });
 
   factory Place.fromJson(Map<String, dynamic> j) => Place(
     placeId: (j['place_id'] ?? '').toString(),
     name: (j['name'] ?? '').toString(),
+    description: j['description'] as String?,
     category: (j['category'] ?? '').toString(),
     lat: (j['lat'] as num?)?.toDouble() ?? 0,
     lon: (j['lon'] as num?)?.toDouble() ?? 0,
     geofenceMeters: _parseInt(j['geofence_meters']),
+    minorSuitability: j['minor_suitability'] as String?,
     isVerified: j['is_verified'] == true,
     isActive: j['is_active'] == true,
     isFollowed: j['is_followed'] == true,
     activeCheckinsCount: _parseInt(j['active_checkins_count']),
     lastCheckinAt: _parseDateOrNull(j['last_checkin_at']),
     followerCount: _parseInt(j['follower_count']),
+    distance: (j['distance'] as num?)?.toDouble(),
   );
 
   Place copyWith({bool? isFollowed, int? followerCount}) => Place(
     placeId: placeId,
     name: name,
+    description: description,
     category: category,
     lat: lat,
     lon: lon,
     geofenceMeters: geofenceMeters,
+    minorSuitability: minorSuitability,
     isVerified: isVerified,
     isActive: isActive,
     isFollowed: isFollowed ?? this.isFollowed,
     activeCheckinsCount: activeCheckinsCount,
     lastCheckinAt: lastCheckinAt,
     followerCount: followerCount ?? this.followerCount,
+    distance: distance,
   );
+
+  Map<String, dynamic> toJson() => {
+    'place_id': placeId,
+    'name': name,
+    if (description != null) 'description': description,
+    'category': category,
+    'lat': lat,
+    'lon': lon,
+    'geofence_meters': geofenceMeters,
+    if (minorSuitability != null) 'minor_suitability': minorSuitability,
+    'is_verified': isVerified,
+    'is_active': isActive,
+    'is_followed': isFollowed,
+    'active_checkins_count': activeCheckinsCount,
+    if (lastCheckinAt != null)
+      'last_checkin_at': lastCheckinAt!.toUtc().toIso8601String(),
+    'follower_count': followerCount,
+    if (distance != null) 'distance': distance,
+  };
 }
 
 // ─── Feed embedded refs ──────────────────────────────────────────────────────
@@ -396,6 +525,15 @@ class PointsBreakdown {
     planBonus: _parseInt(j['plan_bonus']),
     total: _parseInt(j['total']),
   );
+
+  Map<String, dynamic> toJson() => {
+    'base': base,
+    'multiplier': multiplier,
+    'subtotal_checkin': subtotalCheckin,
+    'weekly_bonus': weeklyBonus,
+    'plan_bonus': planBonus,
+    'total': total,
+  };
 }
 
 // ─── StreakStatus (confirm response) ─────────────────────────────────────────
@@ -415,6 +553,12 @@ class StreakStatus {
     weekCheckins: _parseInt(j['week_checkins']),
     multiplier: (j['multiplier'] as num?)?.toDouble() ?? 1.0,
   );
+
+  Map<String, dynamic> toJson() => {
+    'weeks_current': weeksCurrent,
+    'week_checkins': weekCheckins,
+    'multiplier': multiplier,
+  };
 }
 
 // ─── CheckInResult (the `checkin` object in confirm response) ────────────────
@@ -458,6 +602,21 @@ class CheckInResult {
     isFirstOfDay: j['is_first_of_day'] == true,
     checkedInAt: _parseDate(j['checked_in_at']),
   );
+
+  Map<String, dynamic> toJson() => {
+    'checkin_id': checkinId,
+    'user_id': userId,
+    'place_id': placeId,
+    if (photoUrl != null) 'photo_url': photoUrl,
+    if (photoExpiresAt != null)
+      'photo_expires_at': photoExpiresAt!.toUtc().toIso8601String(),
+    'photo_is_permanent': photoIsPermanent,
+    'gps_valid': gpsValid,
+    'validation_passed': validationPassed,
+    'points_awarded': pointsAwarded,
+    'is_first_of_day': isFirstOfDay,
+    'checked_in_at': checkedInAt.toUtc().toIso8601String(),
+  };
 }
 
 // ─── ConfirmCheckInResult (full POST confirm response) ───────────────────────
@@ -490,6 +649,14 @@ class ConfirmCheckInResult {
         isFirstOfDay: j['is_first_of_day'] == true,
         photoViewUrl: j['photo_view_url'] as String?,
       );
+
+  Map<String, dynamic> toJson() => {
+    'checkin': checkin.toJson(),
+    'points_breakdown': pointsBreakdown.toJson(),
+    'streak': streak.toJson(),
+    'is_first_of_day': isFirstOfDay,
+    if (photoViewUrl != null) 'photo_view_url': photoViewUrl,
+  };
 }
 
 // ─── CheckInInitiation (POST .../checkin/initiate response) ──────────────────
@@ -529,6 +696,12 @@ class PlanUser {
     username: (j['username'] ?? '').toString(),
     badgeLevel: BadgeLevel.from(j['badge_level']),
   );
+
+  Map<String, dynamic> toJson() => {
+    'user_id': userId,
+    'username': username,
+    'badge_level': badgeLevel.label,
+  };
 }
 
 class PlanPlace {
@@ -547,6 +720,12 @@ class PlanPlace {
     name: (j['name'] ?? '').toString(),
     category: (j['category'] ?? '').toString(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'place_id': placeId,
+    'name': name,
+    'category': category,
+  };
 }
 
 class Plan {
@@ -616,6 +795,24 @@ class Plan {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'plan_id': planId,
+    'status': status.raw,
+    'visibility': visibility.raw,
+    'message': message,
+    'deadline_hours': deadlineHours,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'deadline_at': deadlineAt.toUtc().toIso8601String(),
+    if (concretadoAt != null)
+      'concretado_at': concretadoAt!.toUtc().toIso8601String(),
+    'creator': creator.toJson(),
+    if (target != null) 'target': target!.toJson(),
+    'place': place.toJson(),
+    'role': role,
+    'participant_count': participantCount,
+    'my_status': myStatus,
+  };
+
   Duration get timeLeft {
     final diff = deadlineAt.difference(DateTime.now());
     return diff.isNegative ? Duration.zero : diff;
@@ -623,9 +820,11 @@ class Plan {
 }
 
 // ─── Open plan (map discovery — GET /api/plans/discover) ─────────────────────
+// ─── DiscoverPlan / OpenPlan (map discovery — GET /api/plans/discover) ───────
 /// An open plan the viewer can join, positioned on the map by its place
 /// coordinates.
 class OpenPlan {
+class DiscoverPlan {
   final String planId;
   final PlanVisibility visibility;
   final String message;
@@ -645,6 +844,7 @@ class OpenPlan {
   final bool isMine;
 
   const OpenPlan({
+  const DiscoverPlan({
     required this.planId,
     required this.visibility,
     required this.message,
@@ -661,8 +861,10 @@ class OpenPlan {
   });
 
   factory OpenPlan.fromJson(Map<String, dynamic> j) {
+  factory DiscoverPlan.fromJson(Map<String, dynamic> j) {
     final place = (j['place'] as Map?)?.cast<String, dynamic>() ?? const {};
     return OpenPlan(
+    return DiscoverPlan(
       planId: (j['plan_id'] ?? '').toString(),
       visibility: PlanVisibility.from(j['visibility']),
       message: (j['message'] ?? '').toString(),
@@ -680,10 +882,84 @@ class OpenPlan {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'plan_id': planId,
+    'visibility': visibility.raw,
+    'message': message,
+    'deadline_hours': deadlineHours,
+    'deadline_at': deadlineAt.toUtc().toIso8601String(),
+    'creator': creator.toJson(),
+    'place': {
+      'place_id': placeId,
+      'name': placeName,
+      'category': placeCategory,
+      'lat': lat,
+      'lon': lon,
+    },
+    'participant_count': participantCount,
+  };
+
   Duration get timeLeft {
     final diff = deadlineAt.difference(DateTime.now());
     return diff.isNegative ? Duration.zero : diff;
   }
+}
+
+typedef OpenPlan = DiscoverPlan;
+
+// ─── FeedCursor (Base64Url Layer|CheckedInAt|EventID) ────────────────────────
+class FeedCursor {
+  final int layer;
+  final DateTime checkedInAt;
+  final String eventId;
+
+  const FeedCursor({
+    required this.layer,
+    required this.checkedInAt,
+    required this.eventId,
+  });
+
+  String encode() {
+    final raw = '$layer|${checkedInAt.toUtc().toIso8601String()}|$eventId';
+    return base64Url.encode(utf8.encode(raw));
+  }
+
+  static FeedCursor? tryDecode(String token) {
+    try {
+      return decode(token);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static FeedCursor decode(String token) {
+    var normalized = token;
+    while (normalized.length % 4 != 0) {
+      normalized += '=';
+    }
+    final raw = utf8.decode(base64Url.decode(normalized));
+    final parts = raw.split('|');
+    if (parts.length < 3) {
+      throw const FormatException('Invalid FeedCursor string');
+    }
+    return FeedCursor(
+      layer: int.parse(parts[0]),
+      checkedInAt: DateTime.parse(parts[1]),
+      eventId: parts.sublist(2).join('|'),
+    );
+  }
+
+  factory FeedCursor.fromJson(Map<String, dynamic> j) => FeedCursor(
+    layer: _parseInt(j['layer']),
+    checkedInAt: _parseDate(j['checked_in_at'] ?? j['timestamp']),
+    eventId: (j['event_id'] ?? j['checkin_id'] ?? '').toString(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'layer': layer,
+    'checked_in_at': checkedInAt.toUtc().toIso8601String(),
+    'event_id': eventId,
+  };
 }
 
 // ─── Rankings ────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import 'widgets.dart';
 import 'photo_viewer.dart';
 import 'place_sheet.dart';
+import 'user_profile_sheet.dart';
 
 /// The "city scroll" — a near-seamless vertical feed of recent check-in photos
 /// across the city (priority layer 1 = friends, 2 = followed places, 3 = city).
@@ -317,6 +318,16 @@ class _FeedCard extends StatelessWidget {
                               '@${event.user.username}',
                               style: textTheme.labelMedium?.copyWith(
                                 color: Colors.white,
+                            GestureDetector(
+                              onTap: () => showUserProfileSheet(
+                                context,
+                                event.user.username,
+                              ),
+                              child: Text(
+                                '@${event.user.username}',
+                                style: textTheme.labelMedium?.copyWith(
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                             if (event.user.isFriend) ...[
@@ -383,8 +394,10 @@ class _FeedCard extends StatelessWidget {
 
 // ─── Photo (handles expired / missing photos) ────────────────────────────────
 class _Photo extends StatelessWidget {
+class FeedPhoto extends StatelessWidget {
   final String? photoUrl;
   const _Photo({required this.photoUrl});
+  const FeedPhoto({super.key, required this.photoUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -396,6 +409,24 @@ class _Photo extends StatelessWidget {
             Icons.local_fire_department_rounded,
             size: 32,
             color: textDarkSecondary,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: 32,
+                color: textDarkSecondary,
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Foto expirada',
+                style: TextStyle(
+                  color: textDarkSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -410,9 +441,29 @@ class _Photo extends StatelessWidget {
             Icons.local_fire_department_rounded,
             size: 32,
             color: textDarkSecondary,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.local_fire_department_rounded,
+                size: 32,
+                color: textDarkSecondary,
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Foto expirada',
+                style: TextStyle(
+                  color: textDarkSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
+
+typedef _Photo = FeedPhoto;

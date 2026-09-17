@@ -35,6 +35,7 @@ enum _Step { place, camera, confirm }
 class _CheckInScreenState extends State<CheckInScreen> {
   _Step _step = _Step.place;
   Place? _place;
+  CheckInInitiation? _initiation;
   XFile? _photo;
   DateTime? _capturedAt;
   Position? _position;
@@ -75,6 +76,29 @@ class _CheckInScreenState extends State<CheckInScreen> {
       _step = _Step.camera;
       _preparing = false;
     });
+    try {
+      final initiation = await ApiService.initiateCheckIn(
+        placeId: place.placeId,
+        lat: position.latitude,
+        lon: position.longitude,
+      );
+      if (!mounted) return;
+      setState(() {
+        _place = place;
+        _position = position;
+        _initiation = initiation;
+        _step = _Step.camera;
+        _preparing = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _preparing = false);
+      showToast(context, e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _preparing = false);
+      showToast(context, 'No se pudo iniciar el check-in. Inténtalo de nuevo.');
+    }
   }
 
   void _capture(XFile photo) => setState(() {
@@ -93,6 +117,17 @@ class _CheckInScreenState extends State<CheckInScreen> {
     _place = null;
     _step = _Step.place;
   });
+  void _cancelToPlaces([String? message]) {
+    setState(() {
+      _photo = null;
+      _place = null;
+      _initiation = null;
+      _step = _Step.place;
+    });
+    if (message != null && mounted) {
+      showToast(context, message);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,12 +148,17 @@ class _CheckInScreenState extends State<CheckInScreen> {
               _Step.camera => _CameraCaptureStep(
                 place: _place!,
                 position: _position!,
+                initiation: _initiation!,
                 onCaptured: _capture,
                 onCancel: _cancelToPlaces,
+                onTimeout: () => _cancelToPlaces(
+                  'El tiempo para el check-in expiró (90s). Inicia de nuevo.',
+                ),
               ),
               _Step.confirm => _ConfirmStep(
                 place: _place!,
                 position: _position!,
+                initiation: _initiation!,
                 photo: _photo!,
                 capturedAt: _capturedAt!,
                 onRetake: _retake,

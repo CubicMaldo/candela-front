@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:candela_front/models.dart';
 import 'package:candela_front/services/api_service.dart';
 import 'package:candela_front/services/auth_service.dart';
 
@@ -281,6 +282,281 @@ void main() {
       final page = await ApiService.getFeed();
       expect(page.hasMore, isFalse);
       expect(page.nextCursor, isNull);
+    });
+  });
+
+  group('checkin 2-phase API calls', () {
+    test('initiateCheckIn returns CheckInInitiation on 201', () async {
+      await TokenStorage.save('tok123');
+      ApiService.client = MockClient((req) async {
+        expect(req.url.path, '/api/places/p1/checkin/initiate');
+        final body = jsonDecode(req.body);
+        expect(body['lat'], 19.4);
+        expect(body['lon'], -99.1);
+        return http.Response(
+          jsonEncode({
+            'checkin_nonce': 'nonce-xyz',
+            'photo_key': 'photos/p1_chk.jpg',
+            'upload_url': 'http://localhost:9000/bucket/key',
+          }),
+          201,
+        );
+      });
+
+      final res = await ApiService.initiateCheckIn(
+        placeId: 'p1',
+        lat: 19.4,
+        lon: -99.1,
+      );
+      expect(res.checkinNonce, 'nonce-xyz');
+      expect(res.photoKey, 'photos/p1_chk.jpg');
+      expect(res.uploadUrl, 'http://localhost:9000/bucket/key');
+    });
+
+    test('confirmCheckIn returns ConfirmCheckInResult on 200', () async {
+      await TokenStorage.save('tok123');
+      ApiService.client = MockClient((req) async {
+        expect(req.url.path, '/api/places/p1/checkin/confirm');
+        final body = jsonDecode(req.body);
+        expect(body['checkin_nonce'], 'nonce-xyz');
+        expect(body['photo_key'], 'photos/p1_chk.jpg');
+        expect(body['photo_is_permanent'], true);
+        return http.Response(
+          jsonEncode({
+            'checkin': {
+              'checkin_id': 'c1',
+              'user_id': 'u1',
+              'place_id': 'p1',
+              'photo_is_permanent': true,
+              'gps_valid': true,
+              'validation_passed': true,
+              'points_awarded': 30,
+              'is_first_of_day': true,
+              'checked_in_at': '2026-09-16T21:00:00Z',
+            },
+            'points_breakdown': {
+              'total': 30,
+              'base': 20,
+              'multiplier': 1.5,
+              'weekly_bonus': 0,
+              'plan_bonus': 0,
+            },
+            'streak': {
+              'weeks_current': 2,
+              'week_checkins': 1,
+              'multiplier': 1.5,
+            },
+            'is_first_of_day': true,
+          }),
+          200,
+        );
+      });
+
+      final res = await ApiService.confirmCheckIn(
+        placeId: 'p1',
+        checkinNonce: 'nonce-xyz',
+        photoKey: 'photos/p1_chk.jpg',
+        photoIsPermanent: true,
+      );
+      expect(res.checkin.checkinId, 'c1');
+      expect(res.pointsBreakdown.total, 30);
+      expect(res.streak.weeksCurrent, 2);
+    });
+  });
+
+  group('Reports and Blocking', () {
+    test('createReport posts to /api/reports and parses Report', () async {
+      await TokenStorage.save('tok123');
+      ApiService.client = MockClient((req) async {
+        expect(req.url.path, '/api/reports');
+        final body = jsonDecode(req.body);
+        expect(body['target_type'], 'CHECKIN');
+        expect(body['target_id'], 'chk-1');
+        expect(body['reason'], 'INAPPROPRIATE_CONTENT');
+        return http.Response(
+          jsonEncode({
+            'report_id': 'rep-1',
+            'reporter_id': 'u1',
+            'target_type': 'CHECKIN',
+            'target_id': 'chk-1',
+            'reason': 'INAPPROPRIATE_CONTENT',
+            'notes': 'Spam',
+            'status': 'PENDING',
+            'created_at': '2026-09-16T22:00:00Z',
+          }),
+          201,
+        );
+      });
+
+      final report = await ApiService.createReport(
+        const CreateReportRequest(
+          targetType: 'CHECKIN',
+          targetId: 'chk-1',
+          reason: 'INAPPROPRIATE_CONTENT',
+          comment: 'Spam',
+        ),
+      );
+      expect(report.reportId, 'rep-1');
+      expect(report.status, 'PENDING');
+    });
+
+    test('blockUser and unblockUser call respective endpoints', () async {
+      await TokenStorage.save('tok123');
+      final calls = <String>[];
+      ApiService.client = MockClient((req) async {
+        calls.add('${req.method} ${req.url.path}');
+        return http.Response('', 204);
+      });
+
+      await ApiService.blockUser('u-bad');
+      await ApiService.unblockUser('u-bad');
+
+      expect(calls, [
+        'POST /api/users/u-bad/block',
+        'DELETE /api/users/u-bad/block',
+      ]);
+    });
+  });
+
+  group('HTTP error codes and custom handling', () {
+    test('403 account suspended throws ApiException with Spanish message', () async {
+      await TokenStorage.save('tok123');
+      ApiService.client = MockClient(
+        (req) async => http.Response(jsonEncode({}), 403),
+      );
+
+      expect(
+        () => ApiService.getMyCheckIns(),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', 403)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('Tu cuenta está suspendida'),
+              ),
+        ),
+      );
+    });
+
+    test('404 user/resource not found throws ApiException with Spanish message', () async {
+      await TokenStorage.save('tok123');
+      ApiService.client = MockClient(
+        (req) async => http.Response(jsonEncode({}), 404),
+      );
+
+      expect(
+        () => ApiService.getPublicProfile('nonexistent'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', 404)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('Usuario no encontrado'),
+              ),
+        ),
+      );
+    });
+
+    test('409 conflict returns server error message', () async {
+      await TokenStorage.save('tok123');
+      ApiService.client = MockClient(
+        (req) async => http.Response(
+          jsonEncode({'error': 'Ya hiciste check-in en este lugar hoy'}),
+          409,
+        ),
+      );
+
+      expect(
+        () => ApiService.initiateCheckIn(placeId: 'p1', lat: 10, lon: 10),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', 409)
+              .having(
+                (e) => e.message,
+                'message',
+                'Ya hiciste check-in en este lugar hoy',
+              ),
+        ),
+      );
+    });
+
+    test('422 validation error returns default Spanish message when empty', () async {
+      await TokenStorage.save('tok123');
+      ApiService.client = MockClient(
+        (req) async => http.Response(jsonEncode({}), 422),
+      );
+
+      expect(
+        () => ApiService.initiateCheckIn(placeId: 'p1', lat: 10, lon: 10),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', 422)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('No fue posible completar la solicitud'),
+              ),
+        ),
+      );
+    });
+
+    test('401 account no longer active clears tokens and throws ApiException', () async {
+      await TokenStorage.save('tok123', refreshToken: 'ref123');
+      var expired = false;
+      ApiService.onSessionExpired = () => expired = true;
+
+      ApiService.client = MockClient(
+        (req) async => http.Response(
+          jsonEncode({'error': 'account no longer active'}),
+          401,
+        ),
+      );
+
+      expect(
+        () => ApiService.getMyProfile(),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', 401)
+              .having(
+                (e) => e.message,
+                'message',
+                'Tu cuenta ha sido eliminada.',
+              ),
+        ),
+      );
+
+      // Verify session expired callback and cleared tokens
+      await pumpEventQueue();
+      expect(expired, isTrue);
+      expect(await TokenStorage.get(), isNull);
+    });
+  });
+
+  group('sanitizeUploadUrl', () {
+    test('rewrites localhost:9000 to 10.0.2.2:9000', () {
+      const original = 'http://localhost:9000/candela-photos/photo.jpg?token=abc';
+      final sanitized = ApiService.sanitizeUploadUrl(original);
+      expect(
+        sanitized,
+        'http://10.0.2.2:9000/candela-photos/photo.jpg?token=abc',
+      );
+    });
+
+    test('rewrites minio:9000 to 10.0.2.2:9000', () {
+      const original = 'http://minio:9000/candela-photos/photo.jpg?token=xyz';
+      final sanitized = ApiService.sanitizeUploadUrl(original);
+      expect(
+        sanitized,
+        'http://10.0.2.2:9000/candela-photos/photo.jpg?token=xyz',
+      );
+    });
+
+    test('leaves external or cloud URLs unchanged', () {
+      const original = 'https://s3.amazonaws.com/bucket/photo.jpg';
+      final sanitized = ApiService.sanitizeUploadUrl(original);
+      expect(sanitized, original);
     });
   });
 }

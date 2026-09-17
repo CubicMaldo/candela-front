@@ -179,10 +179,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _SegmentedControl<PrivacyMode>(
               value: _privacy,
               options: PrivacyMode.values,
+              options: widget.profile.isProtected || widget.profile.age < 18
+                  ? const [PrivacyMode.friends, PrivacyMode.private]
+                  : PrivacyMode.values,
               labelOf: (m) => _privacyLabels[m]!,
               onChanged: _setPrivacy,
             ),
             const SizedBox(height: 8),
+            if (widget.profile.isProtected || widget.profile.age < 18)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  'Modo protegido: Tu cuenta no puede ser pública.',
+                  style: textTheme.labelSmall?.copyWith(
+                    color: candelaAmber,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               child: Text(
