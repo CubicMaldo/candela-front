@@ -459,7 +459,6 @@ class _CameraCaptureStepState extends State<_CameraCaptureStep> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _AccuracyPill(accuracy: widget.position.accuracy),
                       Wrap(
                         spacing: 8,
                         alignment: WrapAlignment.center,
@@ -677,21 +676,10 @@ class _ConfirmStepState extends State<_ConfirmStep> {
     if (_publishing) return;
     setState(() => _publishing = true);
     try {
-      // Re-read the position at publish time: the one captured when the place
-      // was picked may be minutes old (user walking towards the place), and
-      // the geofence validation happens here.
-      final position =
-          await LocationService.getCurrentPosition() ?? widget.position;
-      final initiation = await ApiService.initiateCheckIn(
-        placeId: widget.place.placeId,
-        lat: position.latitude,
-        lon: position.longitude,
-      );
       final uploadUrl =
           ApiService.sanitizeUploadUrl(widget.initiation.uploadUrl);
       final bytes = await widget.photo.readAsBytes();
       final uploadRes = await http.put(
-        Uri.parse(initiation.uploadUrl),
         Uri.parse(uploadUrl),
         headers: const {'Content-Type': 'image/jpeg'},
         body: bytes,
@@ -704,8 +692,6 @@ class _ConfirmStepState extends State<_ConfirmStep> {
       }
       final result = await ApiService.confirmCheckIn(
         placeId: widget.place.placeId,
-        checkinNonce: initiation.checkinNonce,
-        photoKey: initiation.photoKey,
         checkinNonce: widget.initiation.checkinNonce,
         photoKey: widget.initiation.photoKey,
         capturedAt: widget.capturedAt,

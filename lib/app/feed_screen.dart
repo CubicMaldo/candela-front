@@ -314,10 +314,6 @@ class _FeedCard extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              '@${event.user.username}',
-                              style: textTheme.labelMedium?.copyWith(
-                                color: Colors.white,
                             GestureDetector(
                               onTap: () => showUserProfileSheet(
                                 context,
@@ -393,10 +389,8 @@ class _FeedCard extends StatelessWidget {
 }
 
 // ─── Photo (handles expired / missing photos) ────────────────────────────────
-class _Photo extends StatelessWidget {
 class FeedPhoto extends StatelessWidget {
   final String? photoUrl;
-  const _Photo({required this.photoUrl});
   const FeedPhoto({super.key, required this.photoUrl});
 
   @override
@@ -405,10 +399,6 @@ class FeedPhoto extends StatelessWidget {
       return const ColoredBox(
         color: candelaNight,
         child: Center(
-          child: Icon(
-            Icons.local_fire_department_rounded,
-            size: 32,
-            color: textDarkSecondary,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -437,10 +427,6 @@ class FeedPhoto extends StatelessWidget {
       errorBuilder: (_, _, _) => const ColoredBox(
         color: candelaNight,
         child: Center(
-          child: Icon(
-            Icons.local_fire_department_rounded,
-            size: 32,
-            color: textDarkSecondary,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

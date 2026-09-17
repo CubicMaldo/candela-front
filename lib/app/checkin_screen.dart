@@ -70,12 +70,6 @@ class _CheckInScreenState extends State<CheckInScreen> {
       await LocationService.showLocationDisabledDialog(context);
       return;
     }
-    setState(() {
-      _place = place;
-      _position = position;
-      _step = _Step.camera;
-      _preparing = false;
-    });
     try {
       final initiation = await ApiService.initiateCheckIn(
         placeId: place.placeId,
@@ -112,11 +106,6 @@ class _CheckInScreenState extends State<CheckInScreen> {
     _step = _Step.camera;
   });
 
-  void _cancelToPlaces() => setState(() {
-    _photo = null;
-    _place = null;
-    _step = _Step.place;
-  });
   void _cancelToPlaces([String? message]) {
     setState(() {
       _photo = null;

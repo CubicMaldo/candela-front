@@ -95,8 +95,6 @@ DateTime? _parseDateOrNull(Object? v) {
 
 int _parseInt(Object? v) => (v as num?)?.toInt() ?? 0;
 
-// ─── User (own profile — GET /api/me) ────────────────────────────────────────
-class User {
 // ─── MyProfile / User (own profile — GET /api/me) ───────────────────────────
 class MyProfile {
   final String userId;
@@ -122,7 +120,6 @@ class MyProfile {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  const User({
   const MyProfile({
     required this.userId,
     required this.email,
@@ -148,7 +145,6 @@ class MyProfile {
     required this.updatedAt,
   });
 
-  factory User.fromJson(Map<String, dynamic> j) => User(
   factory MyProfile.fromJson(Map<String, dynamic> j) => MyProfile(
     userId: (j['user_id'] ?? '').toString(),
     email: (j['email'] ?? '').toString(),
@@ -819,11 +815,9 @@ class Plan {
   }
 }
 
-// ─── Open plan (map discovery — GET /api/plans/discover) ─────────────────────
 // ─── DiscoverPlan / OpenPlan (map discovery — GET /api/plans/discover) ───────
 /// An open plan the viewer can join, positioned on the map by its place
 /// coordinates.
-class OpenPlan {
 class DiscoverPlan {
   final String planId;
   final PlanVisibility visibility;
@@ -843,7 +837,6 @@ class DiscoverPlan {
   /// into the map pins.
   final bool isMine;
 
-  const OpenPlan({
   const DiscoverPlan({
     required this.planId,
     required this.visibility,
@@ -860,10 +853,8 @@ class DiscoverPlan {
     this.isMine = false,
   });
 
-  factory OpenPlan.fromJson(Map<String, dynamic> j) {
   factory DiscoverPlan.fromJson(Map<String, dynamic> j) {
     final place = (j['place'] as Map?)?.cast<String, dynamic>() ?? const {};
-    return OpenPlan(
     return DiscoverPlan(
       planId: (j['plan_id'] ?? '').toString(),
       visibility: PlanVisibility.from(j['visibility']),

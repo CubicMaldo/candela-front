@@ -7,7 +7,6 @@ import '../app/home_shell.dart';
 import '../app/widgets.dart' show CandelaBackButton;
 import 'widgets.dart';
 
-const _underageMessage = 'Pronto Candela estará disponible para ti.';
 const _underageMessage = 'Debes ser mayor de 18 años para usar Candela.';
 
 /// Final step of the Google sign-up: the email is already verified by Google,

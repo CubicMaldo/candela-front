@@ -57,21 +57,6 @@ class _PhotoViewerScreen extends StatelessWidget {
               padding: const EdgeInsets.all(spacingScreen),
               child: Column(
                 children: [
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: Material(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      shape: const CircleBorder(),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: () => Navigator.pop(context),
-                        child: const SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: Icon(
-                            Icons.close_rounded,
-                            color: Colors.white,
-                            size: 22,
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -96,7 +81,6 @@ class _PhotoViewerScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
                       Material(
                         color: Colors.black.withValues(alpha: 0.4),
                         shape: const CircleBorder(),
@@ -123,10 +107,6 @@ class _PhotoViewerScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          '@${event.user.username}',
-                          style: textTheme.labelMedium?.copyWith(
-                            color: Colors.white,
                         GestureDetector(
                           onTap: () => showUserProfileSheet(
                             context,

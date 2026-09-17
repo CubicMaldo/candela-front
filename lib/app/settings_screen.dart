@@ -178,7 +178,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 10),
             _SegmentedControl<PrivacyMode>(
               value: _privacy,
-              options: PrivacyMode.values,
               options: widget.profile.isProtected || widget.profile.age < 18
                   ? const [PrivacyMode.friends, PrivacyMode.private]
                   : PrivacyMode.values,

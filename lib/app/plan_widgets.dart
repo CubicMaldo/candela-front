@@ -264,10 +264,8 @@ class _PlanCard extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
 class PlanStatusPill extends StatelessWidget {
   final PlanStatus status;
-  const _StatusPill({required this.status});
   const PlanStatusPill({super.key, required this.status});
 
   @override
@@ -283,8 +281,6 @@ class PlanStatusPill extends StatelessWidget {
         candelaAmber,
       ),
       PlanStatus.accepted => ('Aceptado', candelaSage, Colors.white, null),
-      PlanStatus.completed => ('¡Se armó!', candelaSage, Colors.white, null),
-      PlanStatus.failed => ('No se dio', mutedBg, mutedFg, null),
       PlanStatus.completed => ('Concretado', candelaSage, Colors.white, null),
       PlanStatus.failed => ('No concretado', mutedBg, mutedFg, null),
       PlanStatus.declined => ('Declinado', mutedBg, mutedFg, null),

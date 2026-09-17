@@ -116,7 +116,6 @@ class ApiService {
       }
       throw const SessionExpiredException();
     }
-    final body = _tryDecode(res.body);
 
     final msg =
         (body?['error'] as String?) ??
@@ -141,9 +140,6 @@ class ApiService {
   }
 
   /// Runs an authenticated request, refreshing the access token once if the
-  /// server rejects it. The access token lives an hour, so without this the
-  /// user is thrown back to the login screen every hour — potentially in the
-  /// middle of a check-in.
   /// server rejects it.
   static Future<dynamic> _send(
     Future<http.Response> Function(Map<String, String> headers) request, {
@@ -334,19 +330,13 @@ class ApiService {
     required String placeId,
     required String checkinNonce,
     required String photoKey,
-    required DateTime capturedAt,
     DateTime? capturedAt,
     bool photoIsPermanent = false,
   }) async {
-    final j = await _post('/api/places/$placeId/checkin/confirm', {
     final payload = <String, dynamic>{
       'checkin_nonce': checkinNonce,
       'photo_key': photoKey,
-      // The API requires the capture timestamp and rejects photos older than
-      // 60s — the "live photo" guarantee.
-      'exif_timestamp': capturedAt.toUtc().toIso8601String(),
       'photo_is_permanent': photoIsPermanent,
-    });
     };
     if (capturedAt != null) {
       payload['exif_timestamp'] = capturedAt.toUtc().toIso8601String();
@@ -394,7 +384,6 @@ class ApiService {
     final m = _asMap(j);
     final rawEvents = (m['events'] as List? ?? const []);
     return FeedPage(
-      events: (m['events'] as List? ?? const [])
       events: rawEvents
           .where((e) => e is Map && (e['type'] == null || e['type'] == 'checkin'))
           .map((e) => CheckInEvent.fromJson(e as Map<String, dynamic>))
