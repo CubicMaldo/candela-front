@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart' show ApiException, TokenStorage;
 import '../auth/welcome_screen.dart';
-import '../main.dart' show themeModeNotifier;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/theme_provider.dart';
 import '../services/theme_storage.dart';
 import 'widgets.dart';
 
@@ -54,7 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _busy = true;
     });
     try {
-      await ApiService.updatePrivacy(mode);
+      await UsersApi.updatePrivacy(mode);
       if (mounted) {
         showToast(context, 'Privacidad actualizada a ${_privacyLabels[mode]}');
       }
@@ -74,7 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _busy = true;
     });
     try {
-      final result = await ApiService.updateRankingOptIn(value);
+      final result = await UsersApi.updateRankingOptIn(value);
       if (mounted) setState(() => _rankingOptIn = result);
     } on ApiException catch (e) {
       setState(() => _rankingOptIn = previous);
@@ -84,10 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _setThemeMode(ThemeMode mode) {
-    themeModeNotifier.value = mode;
-    ThemeStorage.save(mode);
-  }
+
 
   Future<void> _confirmLogout() async {
     final confirmed = await showAdaptiveDialog<bool>(
@@ -110,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed != true || !mounted) return;
     // Revokes the refresh token server-side as well, so this device's session
     // cannot be resumed with a stolen token.
-    await ApiService.logout();
+    await AuthApi.logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const WelcomeScreen()),
@@ -143,7 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      await ApiService.deleteAccount();
+      await AuthApi.deleteAccount();
       await TokenStorage.clear();
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -221,14 +227,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: textTheme.bodySmall?.copyWith(color: secondaryOn(context)),
             ),
             const SizedBox(height: 10),
-            ValueListenableBuilder<ThemeMode>(
-              valueListenable: themeModeNotifier,
-              builder: (context, mode, _) => _SegmentedControl<ThemeMode>(
-                value: mode,
-                options: ThemeMode.values,
-                labelOf: (m) => _themeLabels[m]!,
-                onChanged: _setThemeMode,
-              ),
+            Consumer(
+              builder: (context, ref, child) {
+                final mode = ref.watch(themeProvider);
+                return _SegmentedControl<ThemeMode>(
+                  value: mode,
+                  options: ThemeMode.values,
+                  labelOf: (m) => _themeLabels[m]!,
+                  onChanged: (m) => ref.read(themeProvider.notifier).setTheme(m),
+                );
+              },
             ),
 
             const SizedBox(height: 40),
@@ -279,7 +287,10 @@ class _SegmentedControl<T> extends StatelessWidget {
           for (final option in options)
             Expanded(
               child: GestureDetector(
-                onTap: () => onChanged(option),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  onChanged(option);
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   alignment: Alignment.center,

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
 import 'checkin_screen.dart';
-import 'map_screen.dart';
+import 'map/map_screen.dart';
 import 'feed_screen.dart';
 import 'plans_screen.dart';
 import 'profile_screen.dart';
@@ -40,7 +40,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _openCheckIn() {
-    HapticFeedback.lightImpact();
+    HapticFeedback.mediumImpact();
     Navigator.push(
       context,
       SlideRightRoute(builder: (_) => const CheckInScreen()),

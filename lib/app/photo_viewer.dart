@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
@@ -38,10 +39,10 @@ class _PhotoViewerScreen extends StatelessWidget {
                 child: Center(
                   child: Hero(
                     tag: 'checkin-photo-${event.checkinId}',
-                    child: Image.network(
+                    child: CachedNetworkImage(imageUrl: 
                       event.photoUrl!,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, _, _) => const Icon(
+                      errorWidget: (_, _, _) => const Icon(
                         Icons.local_fire_department_rounded,
                         size: 48,
                         color: textDarkSecondary,
@@ -139,3 +140,5 @@ class _PhotoViewerScreen extends StatelessWidget {
     );
   }
 }
+
+

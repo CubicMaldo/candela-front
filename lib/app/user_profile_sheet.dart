@@ -2,7 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart' show ApiException;
 import 'widgets.dart';
 import 'report_dialog.dart';
@@ -38,7 +45,7 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
   @override
   void initState() {
     super.initState();
-    _profileFuture = ApiService.getPublicProfile(widget.username);
+    _profileFuture = UsersApi.getPublicProfile(widget.username);
   }
 
   Future<void> _toggleBlock(PublicProfile profile) async {
@@ -72,12 +79,12 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
     HapticFeedback.lightImpact();
     try {
       if (willBlock) {
-        await ApiService.blockUser(profile.userId);
+        await UsersApi.blockUser(profile.userId);
         if (!mounted) return;
         setState(() => _blocked = true);
         showToast(context, '@${profile.username} ha sido bloqueado.');
       } else {
-        await ApiService.unblockUser(profile.userId);
+        await UsersApi.unblockUser(profile.userId);
         if (!mounted) return;
         setState(() => _blocked = false);
         showToast(context, '@${profile.username} ha sido desbloqueado.');

@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import 'widgets.dart';
 import 'settings_screen.dart';
 import 'friends_screen.dart';
@@ -30,8 +37,8 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
   }
 
   void _load() {
-    _profile = ApiService.getMyProfile();
-    _recent = ApiService.getMyCheckIns(limit: 5);
+    _profile = UsersApi.getMyProfile();
+    _recent = CheckInApi.getMyCheckIns(limit: 5);
   }
 
   Future<void> _refresh() async {
@@ -49,7 +56,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
 
   Future<void> _optIntoRankings() async {
     try {
-      await ApiService.updateRankingOptIn(true);
+      await UsersApi.updateRankingOptIn(true);
       if (mounted) setState(_load);
     } catch (_) {
       if (mounted) showToast(context, 'No se pudo activar los rankings.');
@@ -67,6 +74,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
         child: AsyncView<User>(
           future: _profile,
           errorTitle: 'No se pudo cargar tu perfil',
+          onRetry: _refresh,
           loading: const _ProfileSkeleton(),
           builder: (p) => ListView(
             padding: EdgeInsets.fromLTRB(

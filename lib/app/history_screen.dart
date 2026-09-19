@@ -1,7 +1,15 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart';
 import 'widgets.dart';
 
@@ -23,12 +31,12 @@ class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _history = ApiService.getMyCheckIns(limit: 50);
+    _history = CheckInApi.getMyCheckIns(limit: 50);
   }
 
   Future<void> _togglePermanent(MyCheckIn checkIn) async {
     try {
-      final permanent = await ApiService.setPhotoPermanent(
+      final permanent = await CheckInApi.setPhotoPermanent(
         checkIn.checkinId,
         !checkIn.photoIsPermanent,
       );
@@ -40,7 +48,7 @@ class _CheckInHistoryScreenState extends State<CheckInHistoryScreen> {
             : 'La foto vuelve a ser efímera.',
       );
       setState(() {
-        _history = ApiService.getMyCheckIns(limit: 50);
+        _history = CheckInApi.getMyCheckIns(limit: 50);
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -112,10 +120,10 @@ class _HistoryRow extends StatelessWidget {
               width: 44,
               height: 44,
               child: photoUrl != null
-                  ? Image.network(
-                      photoUrl,
+                  ? CachedNetworkImage(
+                      imageUrl: photoUrl,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const _FlameTile(),
+                      errorWidget: (_, _, _) => const _FlameTile(),
                     )
                   : const _FlameTile(),
             ),
@@ -180,3 +188,4 @@ class _FlameTile extends StatelessWidget {
     );
   }
 }
+

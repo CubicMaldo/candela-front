@@ -5,7 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:candela_front/models.dart';
-import 'package:candela_front/services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import 'package:candela_front/services/auth_service.dart';
 
 void main() {
@@ -49,12 +56,12 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(secureChannel, null);
     ApiService.onSessionExpired = null;
-    ApiService.client = http.Client();
+    ApiClient.client = http.Client();
   });
 
   group('login (unauthenticated)', () {
     test('returns an AuthResult on 200', () async {
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         expect(req.url.path, '/api/auth/login');
         return http.Response(
           jsonEncode({
@@ -65,7 +72,7 @@ void main() {
         );
       });
 
-      final result = await ApiService.login(
+      final result = await AuthApi.login(
         email: 'a@b.com',
         password: 'secret',
       );
@@ -74,12 +81,12 @@ void main() {
     });
 
     test('throws ApiException (not session-expiry) on 401', () async {
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         return http.Response(jsonEncode({'error': 'bad creds'}), 401);
       });
 
       expect(
-        () => ApiService.login(email: 'a@b.com', password: 'nope'),
+        () => AuthApi.login(email: 'a@b.com', password: 'nope'),
         throwsA(
           isA<ApiException>()
               .having((e) => e.statusCode, 'statusCode', 401)
@@ -92,7 +99,7 @@ void main() {
   group('getMyProfile (authenticated)', () {
     test('parses the User on 200', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         expect(req.headers['Authorization'], 'Bearer tok123');
         return http.Response(
           jsonEncode({'user_id': 'u1', 'username': 'lucho'}),
@@ -100,7 +107,7 @@ void main() {
         );
       });
 
-      final user = await ApiService.getMyProfile();
+      final user = await UsersApi.getMyProfile();
       expect(user.userId, 'u1');
       expect(user.username, 'lucho');
     });
@@ -109,10 +116,10 @@ void main() {
       await TokenStorage.save('tok123');
       var loggedOut = false;
       ApiService.onSessionExpired = () => loggedOut = true;
-      ApiService.client = MockClient((req) async => http.Response('', 401));
+      ApiClient.client = MockClient((req) async => http.Response('', 401));
 
       await expectLater(
-        ApiService.getMyProfile(),
+        UsersApi.getMyProfile(),
         throwsA(isA<SessionExpiredException>()),
       );
       expect(loggedOut, isTrue);
@@ -125,10 +132,10 @@ void main() {
         await TokenStorage.save('tok123');
         var loggedOut = false;
         ApiService.onSessionExpired = () => loggedOut = true;
-        ApiService.client = MockClient((req) async => http.Response('', 404));
+        ApiClient.client = MockClient((req) async => http.Response('', 404));
 
         await expectLater(
-          ApiService.getMyProfile(),
+          UsersApi.getMyProfile(),
           throwsA(isA<SessionExpiredException>()),
         );
         expect(loggedOut, isTrue);
@@ -144,7 +151,7 @@ void main() {
       ApiService.onSessionExpired = () => loggedOut = true;
 
       final seen = <String>[];
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         seen.add('${req.method} ${req.url.path}');
 
         if (req.url.path == '/api/auth/refresh') {
@@ -169,7 +176,7 @@ void main() {
         return http.Response('', 401);
       });
 
-      final user = await ApiService.getMyProfile();
+      final user = await UsersApi.getMyProfile();
 
       expect(user.username, 'lucho');
       expect(loggedOut, isFalse, reason: 'the session recovered silently');
@@ -188,7 +195,7 @@ void main() {
       var loggedOut = false;
       ApiService.onSessionExpired = () => loggedOut = true;
 
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         if (req.url.path == '/api/auth/refresh') {
           return http.Response(jsonEncode({'error': 'nope'}), 401);
         }
@@ -196,7 +203,7 @@ void main() {
       });
 
       await expectLater(
-        ApiService.getMyProfile(),
+        UsersApi.getMyProfile(),
         throwsA(isA<SessionExpiredException>()),
       );
       expect(loggedOut, isTrue);
@@ -208,7 +215,7 @@ void main() {
       await TokenStorage.save('expired-tok', refreshToken: 'refresh-1');
 
       var refreshCalls = 0;
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         if (req.url.path == '/api/auth/refresh') {
           refreshCalls++;
           return http.Response(
@@ -228,9 +235,9 @@ void main() {
       });
 
       await Future.wait([
-        ApiService.getFeed(),
-        ApiService.getFeed(),
-        ApiService.getFeed(),
+        FeedApi.getFeed(),
+        FeedApi.getFeed(),
+        FeedApi.getFeed(),
       ]);
 
       // Refresh tokens rotate on use: three refreshes would spend three
@@ -244,7 +251,7 @@ void main() {
       await TokenStorage.save('tok123');
 
       final requested = <String?>[];
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         requested.add(req.url.queryParameters['cursor']);
         return http.Response(
           jsonEncode({
@@ -263,23 +270,23 @@ void main() {
         );
       });
 
-      final first = await ApiService.getFeed();
+      final first = await FeedApi.getFeed();
       expect(first.events, hasLength(1));
       expect(first.nextCursor, 'opaque-token-2');
       expect(first.hasMore, isTrue);
 
-      await ApiService.getFeed(cursor: first.nextCursor);
+      await FeedApi.getFeed(cursor: first.nextCursor);
       expect(requested, [null, 'opaque-token-2']);
     });
 
     test('a null next_cursor marks the end of the feed', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient(
+      ApiClient.client = MockClient(
         (req) async =>
             http.Response(jsonEncode({'events': [], 'next_cursor': null}), 200),
       );
 
-      final page = await ApiService.getFeed();
+      final page = await FeedApi.getFeed();
       expect(page.hasMore, isFalse);
       expect(page.nextCursor, isNull);
     });
@@ -288,7 +295,7 @@ void main() {
   group('checkin 2-phase API calls', () {
     test('initiateCheckIn returns CheckInInitiation on 201', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         expect(req.url.path, '/api/places/p1/checkin/initiate');
         final body = jsonDecode(req.body);
         expect(body['lat'], 19.4);
@@ -303,7 +310,7 @@ void main() {
         );
       });
 
-      final res = await ApiService.initiateCheckIn(
+      final res = await CheckInApi.initiateCheckIn(
         placeId: 'p1',
         lat: 19.4,
         lon: -99.1,
@@ -315,7 +322,7 @@ void main() {
 
     test('confirmCheckIn returns ConfirmCheckInResult on 200', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         expect(req.url.path, '/api/places/p1/checkin/confirm');
         final body = jsonDecode(req.body);
         expect(body['checkin_nonce'], 'nonce-xyz');
@@ -352,7 +359,7 @@ void main() {
         );
       });
 
-      final res = await ApiService.confirmCheckIn(
+      final res = await CheckInApi.confirmCheckIn(
         placeId: 'p1',
         checkinNonce: 'nonce-xyz',
         photoKey: 'photos/p1_chk.jpg',
@@ -367,7 +374,7 @@ void main() {
   group('Reports and Blocking', () {
     test('createReport posts to /api/reports and parses Report', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         expect(req.url.path, '/api/reports');
         final body = jsonDecode(req.body);
         expect(body['target_type'], 'CHECKIN');
@@ -388,7 +395,7 @@ void main() {
         );
       });
 
-      final report = await ApiService.createReport(
+      final report = await MiscApi.createReport(
         const CreateReportRequest(
           targetType: 'CHECKIN',
           targetId: 'chk-1',
@@ -403,13 +410,13 @@ void main() {
     test('blockUser and unblockUser call respective endpoints', () async {
       await TokenStorage.save('tok123');
       final calls = <String>[];
-      ApiService.client = MockClient((req) async {
+      ApiClient.client = MockClient((req) async {
         calls.add('${req.method} ${req.url.path}');
         return http.Response('', 204);
       });
 
-      await ApiService.blockUser('u-bad');
-      await ApiService.unblockUser('u-bad');
+      await UsersApi.blockUser('u-bad');
+      await UsersApi.unblockUser('u-bad');
 
       expect(calls, [
         'POST /api/users/u-bad/block',
@@ -421,12 +428,12 @@ void main() {
   group('HTTP error codes and custom handling', () {
     test('403 account suspended throws ApiException with Spanish message', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient(
+      ApiClient.client = MockClient(
         (req) async => http.Response(jsonEncode({}), 403),
       );
 
       expect(
-        () => ApiService.getMyCheckIns(),
+        () => CheckInApi.getMyCheckIns(),
         throwsA(
           isA<ApiException>()
               .having((e) => e.statusCode, 'statusCode', 403)
@@ -441,12 +448,12 @@ void main() {
 
     test('404 user/resource not found throws ApiException with Spanish message', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient(
+      ApiClient.client = MockClient(
         (req) async => http.Response(jsonEncode({}), 404),
       );
 
       expect(
-        () => ApiService.getPublicProfile('nonexistent'),
+        () => UsersApi.getPublicProfile('nonexistent'),
         throwsA(
           isA<ApiException>()
               .having((e) => e.statusCode, 'statusCode', 404)
@@ -461,7 +468,7 @@ void main() {
 
     test('409 conflict returns server error message', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient(
+      ApiClient.client = MockClient(
         (req) async => http.Response(
           jsonEncode({'error': 'Ya hiciste check-in en este lugar hoy'}),
           409,
@@ -469,7 +476,7 @@ void main() {
       );
 
       expect(
-        () => ApiService.initiateCheckIn(placeId: 'p1', lat: 10, lon: 10),
+        () => CheckInApi.initiateCheckIn(placeId: 'p1', lat: 10, lon: 10),
         throwsA(
           isA<ApiException>()
               .having((e) => e.statusCode, 'statusCode', 409)
@@ -484,12 +491,12 @@ void main() {
 
     test('422 validation error returns default Spanish message when empty', () async {
       await TokenStorage.save('tok123');
-      ApiService.client = MockClient(
+      ApiClient.client = MockClient(
         (req) async => http.Response(jsonEncode({}), 422),
       );
 
       expect(
-        () => ApiService.initiateCheckIn(placeId: 'p1', lat: 10, lon: 10),
+        () => CheckInApi.initiateCheckIn(placeId: 'p1', lat: 10, lon: 10),
         throwsA(
           isA<ApiException>()
               .having((e) => e.statusCode, 'statusCode', 422)
@@ -507,7 +514,7 @@ void main() {
       var expired = false;
       ApiService.onSessionExpired = () => expired = true;
 
-      ApiService.client = MockClient(
+      ApiClient.client = MockClient(
         (req) async => http.Response(
           jsonEncode({'error': 'account no longer active'}),
           401,
@@ -515,7 +522,7 @@ void main() {
       );
 
       expect(
-        () => ApiService.getMyProfile(),
+        () => UsersApi.getMyProfile(),
         throwsA(
           isA<ApiException>()
               .having((e) => e.statusCode, 'statusCode', 401)

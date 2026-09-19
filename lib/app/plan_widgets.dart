@@ -387,13 +387,13 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
     _visibility = widget.friend != null
         ? PlanVisibility.invite
         : PlanVisibility.friends;
-    _friends = ApiService.getFriends();
+    _friends = UsersApi.getFriends();
     _places = _loadPlaces();
   }
 
   Future<List<Place>> _loadPlaces() async {
     final position = await LocationService.getCurrentPosition();
-    return ApiService.getNearbyPlaces(
+    return PlacesApi.getNearbyPlaces(
       lat: position?.latitude ?? fallbackLat,
       lon: position?.longitude ?? fallbackLon,
     );
@@ -414,7 +414,7 @@ class _ProposePlanSheetState extends State<_ProposePlanSheet> {
     if (!_canSubmit) return;
     setState(() => _loading = true);
     try {
-      await ApiService.createPlan(
+      await PlansApi.createPlan(
         targetUserId: _isInvite ? _friend!.userId : null,
         placeId: _place!.placeId,
         message: _messageCtrl.text.trim(),

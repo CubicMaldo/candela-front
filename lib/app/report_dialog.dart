@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart' show ApiException;
 import 'widgets.dart' show showToast;
 
@@ -62,7 +69,7 @@ class _ReportDialogState extends State<_ReportDialog> {
     setState(() => _submitting = true);
     try {
       final commentText = _commentCtrl.text.trim();
-      await ApiService.createReport(
+      await MiscApi.createReport(
         CreateReportRequest(
           targetType: widget.targetType,
           targetId: widget.targetId,

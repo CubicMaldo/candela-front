@@ -1,8 +1,16 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import 'widgets.dart';
 import 'checkin_screen.dart';
 import 'photo_viewer.dart';
@@ -38,11 +46,11 @@ class _PlaceSheetState extends State<_PlaceSheet> {
   void initState() {
     super.initState();
     _place = widget.place;
-    _events = ApiService.getEventFeed(_place.placeId);
+    _events = FeedApi.getEventFeed(_place.placeId);
     // The map/list hand us the "nearby" shape, which lacks the live counters
     // (active_checkins_count, is_followed, follower_count) — refresh from the
     // detail endpoint so the sheet never shows "0 personas" on an active spot.
-    ApiService.getPlaceDetail(_place.placeId)
+    PlacesApi.getPlaceDetail(_place.placeId)
         .then((detail) {
           if (mounted) setState(() => _place = detail);
         })
@@ -55,8 +63,8 @@ class _PlaceSheetState extends State<_PlaceSheet> {
     setState(() => _followBusy = true);
     try {
       final (following, followerCount) = _place.isFollowed
-          ? await ApiService.unfollowPlace(_place.placeId)
-          : await ApiService.followPlace(_place.placeId);
+          ? await PlacesApi.unfollowPlace(_place.placeId)
+          : await PlacesApi.followPlace(_place.placeId);
       if (!mounted) return;
       setState(() {
         _place = _place.copyWith(
@@ -314,10 +322,10 @@ class _EventStrip extends StatelessWidget {
                             ),
                           )
                         else
-                          Image.network(
+                          CachedNetworkImage(imageUrl: 
                             url,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const ColoredBox(
+                            errorWidget: (_, _, _) => const ColoredBox(
                               color: candelaNight,
                               child: Icon(
                                 Icons.local_fire_department_rounded,
@@ -411,3 +419,5 @@ class _CheckInCta extends StatelessWidget {
     );
   }
 }
+
+

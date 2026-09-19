@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart';
 import '../app/home_shell.dart';
 import '../app/widgets.dart' show CandelaBackButton;
@@ -80,7 +87,7 @@ class _GoogleCompleteScreenState extends State<GoogleCompleteScreen> {
       _error = null;
     });
     try {
-      final result = await ApiService.registerWithGoogle(
+      final result = await AuthApi.registerWithGoogle(
         idToken: widget.idToken,
         username: _usernameCtrl.text.trim(),
         birthDate: _formatBirthDate(birthDate),

@@ -21,7 +21,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:candela_front/config.dart';
-import 'package:candela_front/services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import 'package:candela_front/services/auth_service.dart';
 
 const _email = 'ana.garcia@example.com';
@@ -73,7 +80,7 @@ void main() {
 
   setUp(() {
     secureStore.clear();
-    ApiService.client = http.Client();
+    ApiClient.client = http.Client();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(secureChannel, (call) async {
           final args = (call.arguments as Map?)?.cast<String, dynamic>() ?? {};
@@ -106,7 +113,7 @@ void main() {
   });
 
   test('login stores both tokens', () async {
-    final result = await ApiService.login(email: _email, password: _password);
+    final result = await AuthApi.login(email: _email, password: _password);
     await TokenStorage.saveSession(result);
 
     expect(result.token, isNotEmpty);
@@ -114,7 +121,7 @@ void main() {
     expect(await TokenStorage.get(), result.token);
     expect(await TokenStorage.getRefresh(), result.refreshToken);
 
-    final me = await ApiService.getMyProfile();
+    final me = await UsersApi.getMyProfile();
     expect(me.username, 'ana_garcia');
   });
 
@@ -130,14 +137,14 @@ void main() {
         return;
       }
 
-      final result = await ApiService.login(email: _email, password: _password);
+      final result = await AuthApi.login(email: _email, password: _password);
       await TokenStorage.saveSession(result);
 
       var loggedOut = false;
       ApiService.onSessionExpired = () => loggedOut = true;
 
       // Works right away.
-      expect((await ApiService.getMyProfile()).username, 'ana_garcia');
+      expect((await UsersApi.getMyProfile()).username, 'ana_garcia');
 
       // Let the access token actually die on the server.
       await Future<void>.delayed(Duration(seconds: ttl + 5));
@@ -155,7 +162,7 @@ void main() {
       );
 
       // ...yet the client recovers without the caller noticing.
-      final profile = await ApiService.getMyProfile();
+      final profile = await UsersApi.getMyProfile();
       expect(profile.username, 'ana_garcia');
       expect(loggedOut, isFalse, reason: 'the user must not be kicked out');
 
@@ -176,7 +183,7 @@ void main() {
         return;
       }
 
-      final result = await ApiService.login(email: _email, password: _password);
+      final result = await AuthApi.login(email: _email, password: _password);
       await TokenStorage.saveSession(result);
 
       var loggedOut = false;
@@ -188,9 +195,9 @@ void main() {
       // Refresh tokens rotate on use, so without the shared in-flight future two
       // of these would spend already-consumed tokens and end the session.
       final results = await Future.wait([
-        ApiService.getMyProfile(),
-        ApiService.getFeed(),
-        ApiService.getFriends(),
+        UsersApi.getMyProfile(),
+        FeedApi.getFeed(),
+        UsersApi.getFriends(),
       ]);
 
       expect(results, hasLength(3));
@@ -201,7 +208,7 @@ void main() {
   );
 
   test('a revoked refresh token ends the session cleanly', () async {
-    final result = await ApiService.login(email: _email, password: _password);
+    final result = await AuthApi.login(email: _email, password: _password);
     await TokenStorage.saveSession(result);
 
     // Server-side logout revokes the refresh token; the access token is left
@@ -220,7 +227,7 @@ void main() {
     ApiService.onSessionExpired = () => loggedOut = true;
 
     await expectLater(
-      ApiService.getMyProfile(),
+      UsersApi.getMyProfile(),
       throwsA(isA<SessionExpiredException>()),
     );
     expect(loggedOut, isTrue);
@@ -231,10 +238,10 @@ void main() {
   test(
     'logout revokes the token server-side',
     () async {
-      final result = await ApiService.login(email: _email, password: _password);
+      final result = await AuthApi.login(email: _email, password: _password);
       await TokenStorage.saveSession(result);
 
-      await ApiService.logout();
+      await AuthApi.logout();
 
       expect(await TokenStorage.get(), isNull);
       expect(await TokenStorage.getRefresh(), isNull);

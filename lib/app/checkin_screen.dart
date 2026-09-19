@@ -8,7 +8,14 @@ import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart' show ApiException;
 import '../services/location_service.dart';
 import '../auth/widgets.dart' show CandelaButton;
@@ -71,7 +78,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       return;
     }
     try {
-      final initiation = await ApiService.initiateCheckIn(
+      final initiation = await CheckInApi.initiateCheckIn(
         placeId: place.placeId,
         lat: position.latitude,
         lon: position.longitude,

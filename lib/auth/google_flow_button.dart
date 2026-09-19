@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../app/home_shell.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart';
 import '../services/google_signin_service.dart';
 import 'google_complete_screen.dart';
@@ -35,7 +42,7 @@ class _GoogleFlowButtonState extends State<GoogleFlowButton> {
         return;
       }
 
-      final outcome = await ApiService.loginWithGoogle(idToken: idToken);
+      final outcome = await AuthApi.loginWithGoogle(idToken: idToken);
       if (!mounted) return;
 
       if (outcome.needsRegistration) {

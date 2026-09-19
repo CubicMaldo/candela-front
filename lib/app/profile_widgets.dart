@@ -217,7 +217,7 @@ class _RankingsSectionState extends State<_RankingsSection> {
         label: const Text('Participar en rankings'),
       );
     }
-    _ranking ??= ApiService.getFriendsRanking();
+    _ranking ??= MiscApi.getFriendsRanking();
     return FutureBuilder<RankingResponse>(
       future: _ranking,
       builder: (context, snap) {

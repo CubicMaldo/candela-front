@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:candela_front/app/map_screen.dart';
+import 'package:candela_front/app/map/map_screen.dart';
 
 void main() {
   group('candelaMapInteractions', () {
@@ -56,3 +56,4 @@ void main() {
     });
   });
 }
+

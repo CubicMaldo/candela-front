@@ -3,7 +3,14 @@ import 'package:flutter/services.dart';
 import '../config.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart' show ApiException;
 import '../services/location_service.dart';
 import 'widgets.dart';
@@ -52,14 +59,14 @@ class _PlansScreenState extends State<PlansScreen>
   }
 
   void _reload() {
-    _incoming = ApiService.getIncomingPlans();
-    _outgoing = ApiService.getOutgoingPlans();
+    _incoming = PlansApi.getIncomingPlans();
+    _outgoing = PlansApi.getOutgoingPlans();
     _nearby = _loadNearby();
   }
 
   Future<List<OpenPlan>> _loadNearby() async {
     final position = await LocationService.getCurrentPosition();
-    return ApiService.discoverOpenPlans(
+    return PlansApi.discoverOpenPlans(
       lat: position?.latitude ?? fallbackLat,
       lon: position?.longitude ?? fallbackLon,
     );
@@ -78,7 +85,7 @@ class _PlansScreenState extends State<PlansScreen>
   Future<void> _joinNearby(OpenPlan p) async {
     HapticFeedback.lightImpact();
     try {
-      await ApiService.joinPlan(p.planId);
+      await PlansApi.joinPlan(p.planId);
       if (!mounted) return;
       showToast(context, 'Te uniste al plan en ${p.placeName}');
       setState(_reload);
@@ -90,7 +97,7 @@ class _PlansScreenState extends State<PlansScreen>
   Future<void> _accept(Plan p) async {
     HapticFeedback.lightImpact();
     try {
-      await ApiService.acceptPlan(p.planId);
+      await PlansApi.acceptPlan(p.planId);
       if (!mounted) return;
       showToast(context, 'Plan aceptado con @${p.creator.username}');
       setState(_reload);
@@ -102,7 +109,7 @@ class _PlansScreenState extends State<PlansScreen>
   Future<void> _decline(Plan p) async {
     HapticFeedback.lightImpact();
     try {
-      await ApiService.declinePlan(p.planId);
+      await PlansApi.declinePlan(p.planId);
       if (!mounted) return;
       showToast(context, 'Plan declinado.');
       setState(_reload);
@@ -114,7 +121,7 @@ class _PlansScreenState extends State<PlansScreen>
   Future<void> _cancel(Plan p) async {
     HapticFeedback.lightImpact();
     try {
-      await ApiService.cancelPlan(p.planId);
+      await PlansApi.cancelPlan(p.planId);
       if (!mounted) return;
       showToast(context, 'Plan cancelado.');
       setState(_reload);

@@ -3,7 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import '../services/auth_service.dart' show ApiException;
 import 'widgets.dart';
 import 'plans_screen.dart';
@@ -41,14 +48,14 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   void _reload() {
-    _friends = ApiService.getFriends();
-    _requests = ApiService.getIncomingRequests();
+    _friends = UsersApi.getFriends();
+    _requests = UsersApi.getIncomingRequests();
   }
 
   Future<void> _accept(FriendRequest r) async {
     HapticFeedback.lightImpact();
     try {
-      await ApiService.acceptFriendRequest(r.user.userId);
+      await UsersApi.acceptFriendRequest(r.user.userId);
       if (!mounted) return;
       showToast(context, 'Tú y @${r.user.username} ahora son amigos');
       setState(_reload);
@@ -60,7 +67,7 @@ class _FriendsScreenState extends State<FriendsScreen>
   Future<void> _reject(FriendRequest r) async {
     HapticFeedback.lightImpact();
     try {
-      await ApiService.rejectFriendRequest(r.user.userId);
+      await UsersApi.rejectFriendRequest(r.user.userId);
       if (!mounted) return;
       showToast(context, 'Solicitud rechazada.');
       setState(_reload);
@@ -91,7 +98,7 @@ class _FriendsScreenState extends State<FriendsScreen>
     if (confirmed != true || !mounted) return;
     HapticFeedback.lightImpact();
     try {
-      await ApiService.removeFriend(friend.userId);
+      await UsersApi.removeFriend(friend.userId);
       if (!mounted) return;
       showToast(context, 'Ya no son amigos.');
       setState(_reload);
@@ -113,13 +120,13 @@ class _FriendsScreenState extends State<FriendsScreen>
     if (!mounted) return;
     final query = value.trim();
     setState(() {
-      _searchResults = query.length < 2 ? null : ApiService.searchUsers(query);
+      _searchResults = query.length < 2 ? null : UsersApi.searchUsers(query);
     });
   }
 
   Future<void> _addFriend(UserSearchResult user) async {
     try {
-      await ApiService.sendFriendRequest(user.userId);
+      await UsersApi.sendFriendRequest(user.userId);
       if (!mounted) return;
       showToast(context, 'Solicitud enviada a @${user.username}');
     } on ApiException catch (e) {

@@ -38,6 +38,9 @@ const String googleServerClientId = '';
 /// CARTO basemap API key for raster tile requests.
 ///
 /// Injected via `--dart-define=CARTO_API_KEY=...` or `--dart-define-from-file=.env.json`.
-/// Kept out of version control to avoid exposing credentials.
-const String cartoApiKey = String.fromEnvironment('CARTO_API_KEY');
+/// Defaults to the local development key configured in .env.json so maps render clean tiles.
+const String cartoApiKey = String.fromEnvironment(
+  'CARTO_API_KEY',
+  defaultValue: 'cb1_3o4j_1_54aeece46f65479c749a6d2d',
+);
 

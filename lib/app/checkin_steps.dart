@@ -43,7 +43,7 @@ class _PlaceSelectStepState extends State<_PlaceSelectStep> {
   Future<List<Place>> _loadPlaces() async {
     final position = await LocationService.getCurrentPosition();
     if (mounted && position != null) setState(() => _position = position);
-    return ApiService.getNearbyPlaces(
+    return PlacesApi.getNearbyPlaces(
       lat: position?.latitude ?? fallbackLat,
       lon: position?.longitude ?? fallbackLon,
     );
@@ -677,7 +677,7 @@ class _ConfirmStepState extends State<_ConfirmStep> {
     setState(() => _publishing = true);
     try {
       final uploadUrl =
-          ApiService.sanitizeUploadUrl(widget.initiation.uploadUrl);
+          ApiClient.sanitizeUploadUrl(widget.initiation.uploadUrl);
       final bytes = await widget.photo.readAsBytes();
       final uploadRes = await http.put(
         Uri.parse(uploadUrl),
@@ -690,7 +690,7 @@ class _ConfirmStepState extends State<_ConfirmStep> {
           statusCode: 0,
         );
       }
-      final result = await ApiService.confirmCheckIn(
+      final result = await CheckInApi.confirmCheckIn(
         placeId: widget.place.placeId,
         checkinNonce: widget.initiation.checkinNonce,
         photoKey: widget.initiation.photoKey,
@@ -940,3 +940,4 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
     );
   }
 }
+

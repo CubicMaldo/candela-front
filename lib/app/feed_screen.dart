@@ -1,7 +1,15 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../models.dart';
-import '../services/api_service.dart';
+import 'package:candela_front/services/api/api_client.dart';
+import 'package:candela_front/services/api/auth_api.dart';
+import 'package:candela_front/services/api/users_api.dart';
+import 'package:candela_front/services/api/places_api.dart';
+import 'package:candela_front/services/api/plans_api.dart';
+import 'package:candela_front/services/api/feed_api.dart';
+import 'package:candela_front/services/api/checkin_api.dart';
+import 'package:candela_front/services/api/misc_api.dart';
 import 'widgets.dart';
 import 'photo_viewer.dart';
 import 'place_sheet.dart';
@@ -41,7 +49,7 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Future<bool> _load() async {
-    final page = await ApiService.getFeed();
+    final page = await FeedApi.getFeed();
     if (!mounted) return true;
     setState(() {
       _events
@@ -70,7 +78,7 @@ class _FeedScreenState extends State<FeedScreen> {
     if (cursor == null) return;
     setState(() => _loadingMore = true);
     try {
-      final page = await ApiService.getFeed(cursor: cursor);
+      final page = await FeedApi.getFeed(cursor: cursor);
       if (!mounted) return;
       setState(() {
         // Guard against a stale page arriving after a pull-to-refresh reset
@@ -264,7 +272,7 @@ class _FeedCard extends StatelessWidget {
   const _FeedCard(this.event);
 
   Future<void> _openPlace(BuildContext context) async {
-    final place = await ApiService.getPlaceDetail(event.place.placeId);
+    final place = await PlacesApi.getPlaceDetail(event.place.placeId);
     if (context.mounted) showPlaceSheet(context, place);
   }
 
@@ -421,10 +429,10 @@ class FeedPhoto extends StatelessWidget {
         ),
       );
     }
-    return Image.network(
-      photoUrl!,
+    return CachedNetworkImage(
+      imageUrl: photoUrl!,
       fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => const ColoredBox(
+      errorWidget: (_, _, _) => const ColoredBox(
         color: candelaNight,
         child: Center(
           child: Column(
@@ -453,3 +461,4 @@ class FeedPhoto extends StatelessWidget {
 }
 
 typedef _Photo = FeedPhoto;
+

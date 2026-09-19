@@ -1,5 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import '../theme.dart';
 import '../models.dart';
 
@@ -230,7 +232,7 @@ class UserAvatar extends StatelessWidget {
               )
             : null,
         image: imageUrl != null
-            ? DecorationImage(image: NetworkImage(imageUrl!), fit: BoxFit.cover)
+            ? DecorationImage(image: CachedNetworkImageProvider(imageUrl!), fit: BoxFit.cover)
             : null,
       ),
       alignment: Alignment.center,
@@ -460,6 +462,39 @@ class EmptyState extends StatelessWidget {
 }
 
 // ─── Async loader: FutureBuilder with loading / error / data ──────────────────
+String _friendlyErrorMessage(dynamic error) {
+  if (error == null) return 'Ha ocurrido un error inesperado.';
+  final errStr = error.toString().toLowerCase();
+  if (errStr.contains('socketexception') ||
+      errStr.contains('connection refused') ||
+      errStr.contains('connection closed') ||
+      errStr.contains('clientexception') ||
+      errStr.contains('failed host lookup') ||
+      errStr.contains('network is unreachable')) {
+    return 'No pudimos conectar con Candela. Revisa tu conexión a internet o intenta de nuevo.';
+  }
+  if (errStr.contains('timeout')) {
+    return 'La respuesta tardó demasiado. Por favor, intenta de nuevo.';
+  }
+  if (errStr.contains('401') || errStr.contains('unauthorized')) {
+    return 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.';
+  }
+  if (errStr.contains('404') || errStr.contains('not found')) {
+    return 'No pudimos encontrar la información solicitada.';
+  }
+  if (errStr.contains('500') || errStr.contains('server error')) {
+    return 'El servidor tuvo un problema temporal. Intenta en un momento.';
+  }
+  final raw = error.toString().replaceFirst('Exception: ', '').trim();
+  if (raw.isNotEmpty &&
+      !raw.contains('\n') &&
+      !raw.contains('ClientException') &&
+      !raw.contains('Instance of')) {
+    return raw;
+  }
+  return 'Ha ocurrido un problema al obtener los datos. Intenta nuevamente.';
+}
+
 class AsyncView<T> extends StatelessWidget {
   final Future<T> future;
   final Widget Function(T data) builder;
@@ -469,11 +504,19 @@ class AsyncView<T> extends StatelessWidget {
   /// the shared amber spinner.
   final Widget? loading;
 
+  /// Optional callback to retry the operation when an error occurs.
+  final VoidCallback? onRetry;
+
+  /// Label for the retry button.
+  final String retryLabel;
+
   const AsyncView({
     required this.future,
     required this.builder,
     this.errorTitle = 'No se pudo cargar',
     this.loading,
+    this.onRetry,
+    this.retryLabel = 'Reintentar',
     super.key,
   });
 
@@ -489,7 +532,17 @@ class AsyncView<T> extends StatelessWidget {
           return EmptyState(
             icon: Icons.cloud_off_rounded,
             title: errorTitle,
-            message: snap.error.toString(),
+            message: _friendlyErrorMessage(snap.error),
+            action: onRetry != null
+                ? PillButton(
+                    label: retryLabel,
+                    icon: Icons.refresh_rounded,
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      onRetry!();
+                    },
+                  )
+                : null,
           );
         }
         return builder(snap.data as T);
@@ -711,21 +764,34 @@ class CandelaBackButton extends StatelessWidget {
 class SquareIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  const SquareIconButton({required this.icon, required this.onTap, super.key});
+  final double size;
+  const SquareIconButton({
+    required this.icon,
+    required this.onTap,
+    this.size = 40,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: borderInactive.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(radiusMedium),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+        child: Center(
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: borderInactive.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(radiusMedium),
+            ),
+            child: Icon(icon, size: 20, color: secondaryOn(context)),
+          ),
         ),
-        child: Icon(icon, size: 20, color: secondaryOn(context)),
       ),
     );
   }
 }
+
